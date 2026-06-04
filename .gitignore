@@ -1,0 +1,64 @@
+# ── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.whl
+
+# ── 虚拟环境 ──────────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── 环境变量（.env 含密钥不提交，.env.example 可提交）────
+.env
+
+# ── IDE ───────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*.code-workspace
+
+# ── OS ────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── 模型文件 ──────────────────────────────────────────
+*.pt
+*.onnx
+*.bin
+*.xml
+*.pth
+*.h5
+*.pb
+*.tflite
+edge/public/
+edge_cache/
+
+# ── Node / Vue ────────────────────────────────────────
+node_modules/
+dist-ssr/
+*.local
+web/dist/
+
+# ── Docker ─────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── 测试 / 类型检查 ───────────────────────────────────
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ── 文档（课程设计模板，不参与版本管理）──────────────────
+docs/
+
+# ── 杂项 ───────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
+.python-version
+uv.lock

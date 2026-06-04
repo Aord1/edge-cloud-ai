@@ -1,0 +1,111 @@
+[project]
+name = "edge-cloud-ai"
+version = "0.1.0"
+description = "边云协同智能系统 — 边缘YOLO检测 + 云端LangChain Agent + Vue管理平台"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Developer", email = "dev@example.com" },
+]
+keywords = ["edge-computing", "yolo", "langchain", "agent", "rag", "iot"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Education",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    # ── 边缘端 ──
+    "opencv-python>=4.8.0",
+    "ultralytics>=8.0.0",
+    "paho-mqtt>=2.0.0",
+    "httpx>=0.27.0",
+    # ── 云端 Web ──
+    "fastapi[standard]>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "python-multipart>=0.0.12",
+    # ── Agent / LLM ──
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-community>=0.3.0",
+    "langgraph>=0.2.0",
+    # ── 数据库 ──
+    "sqlalchemy[asyncio]>=2.0.35",
+    "asyncpg>=0.30.0",
+    "pgvector>=0.3.6",
+    "alembic>=1.14.0",
+    # ── RAG / 向量 ──
+    "sentence-transformers>=3.2.0",
+    # ── 认证 ──
+    "python-jose[cryptography]>=3.3.0",
+    "passlib[bcrypt]>=1.7.4",
+    # ── 工具库 ──
+    "pydantic>=2.9.0",
+    "pydantic-settings>=2.6.0",
+    "python-dotenv>=1.0.1",
+    "loguru>=0.7.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",         # 用于 TestClient
+    "ruff>=0.7.0",
+]
+edge = [
+    # 边缘端额外依赖（NVIDIA GPU 推理）
+    "onnxruntime-gpu>=1.20.0",
+    "torch>=2.5.0",
+    "torchvision>=0.20.0",
+]
+cloud = [
+    # 云端额外依赖
+    "redis[hiredis]>=5.2.0",
+    "celery>=5.4.0",
+]
+
+# ── 脚本入口 ────────────────────────────────────────────────
+[project.scripts]
+edge-run = "edge.main:main"
+cloud-run = "cloud.main:main"
+
+# ── 工具配置 ────────────────────────────────────────────────
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+
+[tool.alembic]
+script_location = "cloud/db/migrations"
+# sqlalchemy_url 由 cloud/db/migrations/env.py 从 cloud.config.settings.db_url 动态读取
+
+# ── 构建系统 ────────────────────────────────────────────────
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# ── setuptools 包发现 ──
+[tool.setuptools.packages.find]
+include = ["edge*", "cloud*", "shared*"]
+
+# ── 依赖源 ──────────────────────────────────────────────────
+[tool.uv.sources]
+# 如需私有包或 Git 依赖在此配置
