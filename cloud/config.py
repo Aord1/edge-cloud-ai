@@ -11,6 +11,7 @@ class CloudSettings(BaseSettings):
     # ── 服务 ──
     cloud_host: str = "0.0.0.0"
     cloud_port: int = 8000
+    environment: str = "development"   # development | production
 
     # ── 数据库 ──
     db_host: str = "localhost"

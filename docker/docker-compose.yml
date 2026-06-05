@@ -1,0 +1,21 @@
+# ── 边云协同数据库服务 ──────────────────────────────────────
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: edgecloud-db
+    environment:
+      POSTGRES_USER: edgecloud
+      POSTGRES_PASSWORD: 201152
+      POSTGRES_DB: edge_cloud
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgecloud -d edge_cloud"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pgdata:

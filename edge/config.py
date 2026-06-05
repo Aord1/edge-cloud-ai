@@ -10,7 +10,6 @@ from pydantic_settings import BaseSettings
 class EdgeSettings(BaseSettings):
     # ── 设备 ──
     edge_device_id: str = "camera-01"
-    edge_camera_source: str = "0"
 
     # ── 云端地址 ──
     edge_cloud_api_url: str = "http://localhost:8000/api/v1"
