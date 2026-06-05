@@ -5,8 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from ultralytics import YOLO
+from ultralytics.utils.downloads import attempt_download_asset
 
-from ..config import BATCH, DATA_YAML, DEVICE, EPOCHS, IMGSZ, MODEL_NAME, RUNS_DIR
+from ..config import BATCH, DATA_YAML, DEVICE, EPOCHS, IMGSZ, MODEL_PATH, RUNS_DIR
 
 
 def train(
@@ -22,7 +23,21 @@ def train(
     print(f"[训练] YOLO26n  |  epochs={epochs}  imgsz={imgsz}  batch={batch}  device={device}")
     print(f"       数据: {DATA_YAML}")
 
-    model = YOLO(MODEL_NAME)
+    # 确保预训练权重存在（不存在则下载）
+    model_pt = Path(MODEL_PATH)
+    if not model_pt.exists():
+        print(f"[下载] yolo26n.pt → {model_pt.parent}")
+        attempt_download_asset("yolo26n.pt")
+        # ultralytics 下载到当前目录，移动到 weights/
+        downloaded = Path("yolo26n.pt")
+        if downloaded.exists():
+            model_pt.parent.mkdir(parents=True, exist_ok=True)
+            downloaded.rename(model_pt)
+            print(f"[下载] 完成 → {model_pt}")
+    else:
+        print(f"[模型] {model_pt}")
+
+    model = YOLO(str(model_pt))
 
     model.train(
         data=str(DATA_YAML),
@@ -31,6 +46,7 @@ def train(
         batch=batch,
         device=device,
         workers=0,
+        project=str(RUNS_DIR),
         name="neu-det",
         exist_ok=True,
         # 轻量增强（小数据集适用）
