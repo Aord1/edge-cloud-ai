@@ -1,4 +1,4 @@
-"""边缘端主入口 — 视频采集 → YOLO 检测 → 分类 → 告警/上传。
+"""边缘端主入口 — 视频采集 → NEU-DET 缺陷检测 → 分类 → 告警/上传。
 
 用法:
     python -m edge.main                      # 默认摄像头
@@ -17,6 +17,7 @@ import numpy as np
 from .capture.camera import make_camera
 from .classify.alert import AlertEngine
 from .classify.decision import Action, classify
+from .config import edge_settings
 from .inference.detector import YOLODetector
 from .network.http_client import upload_sync
 
@@ -25,7 +26,7 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Edge YOLO Detection")
     p.add_argument("-s", "--source", default="0")
     p.add_argument("--fps", type=int, default=0, help="0=视频自动/摄像头30")
-    p.add_argument("--conf", type=float, default=0.25, help="YOLO 置信度阈值")
+    p.add_argument("--conf", type=float, default=0.3, help="YOLO 置信度阈值")
     p.add_argument("--conf-edge", type=float, default=0.5, help="边缘本地处理阈值")
     p.add_argument("--max-det", type=int, default=20)
     p.add_argument("--display", type=int, default=1280, help="0=原始尺寸")
@@ -37,7 +38,7 @@ def main(argv: list[str] | None = None) -> None:
 
     src = int(args.source) if args.source.lstrip("-").isdigit() else args.source
     cam = make_camera(source=src, fps=args.fps)
-    detector = YOLODetector(conf_threshold=args.conf, max_detections=args.max_det)
+    detector = YOLODetector(model_path=edge_settings.model_path, conf_threshold=args.conf, max_detections=args.max_det)
     alerter = AlertEngine()
 
     kind = "摄像头" if isinstance(src, int) else f"文件 {src!r}"
@@ -122,15 +123,19 @@ def main(argv: list[str] | None = None) -> None:
 # ── 绘制 ──────────────────────────────────────────────────────
 
 COLORS: dict[int, tuple[int, int, int]] = {
-    0: (0, 255, 255), 2: (255, 255, 0), 5: (0, 255, 0), 7: (255, 0, 0),
+    0: (0, 0, 255),       # crazing — 红
+    1: (255, 128, 0),     # inclusion — 橙
+    2: (0, 255, 255),     # patches — 黄
+    3: (255, 0, 255),     # pitted_surface — 紫
+    4: (128, 128, 128),   # rolled-in_scale — 灰
+    5: (0, 255, 0),       # scratches — 绿
 }
-DEFAULT_COLOR = (0, 255, 0)
 
 
 def _annotate(frame: np.ndarray, result, decision, fps: float) -> np.ndarray:
     annotated = frame.copy()
     for d in result.detections:
-        c = COLORS.get(d.class_id, DEFAULT_COLOR)
+        c = COLORS.get(d.class_id, (0, 255, 0))
         x1, y1, x2, y2 = d.bbox
         cv2.rectangle(annotated, (x1, y1), (x2, y2), c, 2)
         label = f"{d.class_name} {d.confidence:.2f}"
@@ -139,7 +144,7 @@ def _annotate(frame: np.ndarray, result, decision, fps: float) -> np.ndarray:
         cv2.putText(annotated, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
     # 状态栏
-    status = f"FPS:{fps:.0f} | Det:{result.count} | "
+    status = f"FPS:{fps:.0f} | 缺陷:{result.count} | "
     status += "EDGE" if decision.action == Action.EDGE else ">>CLOUD"
     color = (0, 255, 0) if decision.action == Action.EDGE else (0, 0, 255)
     cv2.putText(annotated, status, (10, annotated.shape[0] - 14),
@@ -152,7 +157,7 @@ def _annotate_scaled(
 ) -> np.ndarray:
     annotated = frame.copy()
     for d in result.detections:
-        c = COLORS.get(d.class_id, DEFAULT_COLOR)
+        c = COLORS.get(d.class_id, (0, 255, 0))
         x1, y1 = int(d.x1 * sx), int(d.y1 * sy)
         x2, y2 = int(d.x2 * sx), int(d.y2 * sy)
         cv2.rectangle(annotated, (x1, y1), (x2, y2), c, 2)
@@ -161,7 +166,7 @@ def _annotate_scaled(
         cv2.rectangle(annotated, (x1, y1 - th - 4), (x1 + tw + 4, y1), c, -1)
         cv2.putText(annotated, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-    status = f"FPS:{fps:.0f} | Det:{result.count}"
+    status = f"FPS:{fps:.0f} | 缺陷:{result.count}"
     color = (0, 255, 0) if decision.action == Action.EDGE else (0, 0, 255)
     cv2.putText(annotated, status, (10, annotated.shape[0] - 14),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)

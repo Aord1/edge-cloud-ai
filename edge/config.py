@@ -11,6 +11,9 @@ class EdgeSettings(BaseSettings):
     # ── 设备 ──
     edge_device_id: str = "camera-01"
 
+    # ── 模型路径 ──
+    model_path: str = "edge/public/neu-det/yolo26n_neu_det.xml"
+
     # ── 云端地址 ──
     edge_cloud_api_url: str = "http://localhost:8000/api/v1"
 

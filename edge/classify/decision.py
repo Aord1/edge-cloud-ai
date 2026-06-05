@@ -1,13 +1,14 @@
-"""检测结果分类 — 简单场景本地告警，复杂场景上传云端。"""
+"""检测结果分类 — 高置信缺陷本地告警，复杂/低置信场景上传云端。"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
 
-from ..inference.detector import Detection, FrameResult
+from ..inference.detector import NEU_DET_CLASSES, Detection, FrameResult
 
-SIMPLE_CLASSES = {"person", "car", "truck", "bus", "bicycle", "motorcycle", "traffic light"}
+# 相对严重的缺陷类别（需要云端深度复核）
+SEVERE_DEFECTS = {"crazing", "rolled-in_scale", "inclusion"}
 
 
 class Action(Enum):
@@ -27,23 +28,43 @@ class Decision:
 def classify(result: FrameResult, conf_edge: float = 0.5) -> Decision:
     dets = result.detections
     if not dets:
-        return Decision(Action.EDGE, "empty", summary="无目标")
+        return Decision(Action.EDGE, "empty", summary="无缺陷")
 
-    # 高置信简单类 → 本地；其余 → 上传
-    local = [d for d in dets if d.class_name in SIMPLE_CLASSES and d.confidence >= conf_edge]
-    upload = [d for d in dets if d not in local]
+    # 有效缺陷
+    valid = [d for d in dets if d.class_name in NEU_DET_CLASSES]
+    if not valid:
+        return Decision(Action.EDGE, "no_defect", summary="无有效缺陷")
 
-    # 有复杂类或低置信度 → 上传
+    # 低置信 → 上传
+    low_conf = [d for d in valid if d.confidence < conf_edge]
+    # 严重缺陷 → 上传（即使置信度够高）
+    severe = [d for d in valid if d.confidence >= conf_edge and d.class_name in SEVERE_DEFECTS]
+    # 普通高置信 → 本地
+    local = [d for d in valid if d.confidence >= conf_edge and d.class_name not in SEVERE_DEFECTS]
+
+    upload = low_conf + severe
+
+    # 多缺陷混杂 → 全部上传
+    defect_types = {d.class_name for d in valid}
+    if len(defect_types) > 2:
+        return Decision(Action.CLOUD, "mixed_defects", upload=valid,
+                        summary=f"混杂 {len(defect_types)} 类缺陷，上传深度分析")
+
+    # 目标过多 → 上传
+    if len(valid) > 5:
+        return Decision(Action.CLOUD, "crowded", upload=valid,
+                        summary=f"缺陷过多 ({len(valid)} > 5)")
+
+    # 有需上传的
     if upload:
-        reason = "complex_class" if any(d.class_name not in SIMPLE_CLASSES for d in upload) else "low_confidence"
-        return Decision(Action.CLOUD, reason, local=local, upload=upload,
-                        summary=f"上传 {len(upload)} 条 (复杂类/低置信度)")
+        reasons = []
+        if low_conf:
+            reasons.append(f"低置信 {len(low_conf)} 条")
+        if severe:
+            reasons.append(f"严重缺陷 {len(severe)} 条")
+        return Decision(Action.CLOUD, "review", local=local, upload=upload,
+                        summary="; ".join(reasons))
 
-    # 多目标 → 上传
-    if len(local) > 10:
-        return Decision(Action.CLOUD, "crowded", upload=dets,
-                        summary=f"目标过多 ({len(dets)} > 10)")
-
-    # 纯简单高置信 → 本地
+    # 纯普通高置信 → 本地
     return Decision(Action.EDGE, "simple", local=local,
-                    summary=f"本地处理 {len(local)} 个目标")
+                    summary=f"本地处理 {len(local)} 个缺陷")

@@ -1,4 +1,4 @@
-"""本地告警引擎。"""
+"""本地告警引擎 — 缺陷检测告警。"""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from ..inference.detector import Detection
+
+# 严重缺陷类别
+SEVERE_DEFECTS = {"crazing", "rolled-in_scale", "inclusion"}
 
 
 @dataclass
@@ -31,15 +34,22 @@ class AlertEngine:
         if not detections:
             return None
 
-        # 归并告警类型
-        classes = {d.class_name for d in detections}
-        n = len(detections)
-        if "person" in classes:
-            atype = "crowd" if n >= 5 else "person"
-        elif classes & {"car", "truck", "bus", "motorcycle"}:
-            atype = "vehicle"
+        # 按缺陷严重程度归类
+        severe = [d for d in detections if d.class_name in SEVERE_DEFECTS]
+        names = {d.class_name for d in detections}
+
+        if severe:
+            atype = "severe"
+            msg_detail = _fmt(self._counts(severe))
+        elif len(names) > 1:
+            atype = "multiple"
+            msg_detail = _fmt(self._counts(detections))
+        elif len(detections) > 3:
+            atype = "dense"
+            msg_detail = f"{len(detections)} 个"
         else:
-            atype = "object"
+            atype = "defect"
+            msg_detail = _fmt(self._counts(detections))
 
         # 冷却检查
         now = time.time()
@@ -47,8 +57,9 @@ class AlertEngine:
             return None
         self._last[atype] = now
 
-        names = ", ".join(f"{d.class_name}×{c}" for d, c in self._counts(detections).items())
-        alert = Alert(alert_type=atype, message=f"[{atype}] {names}", detections=detections)
+        alert = Alert(alert_type=atype,
+                      message=f"[缺陷告警] {msg_detail}",
+                      detections=detections)
         self._history.append(alert)
         if len(self._history) > 200:
             self._history = self._history[-200:]
@@ -63,3 +74,7 @@ class AlertEngine:
         for d in detections:
             counts[d.class_name] = counts.get(d.class_name, 0) + 1
         return counts
+
+
+def _fmt(counts: dict[str, int]) -> str:
+    return ", ".join(f"{k}×{v}" for k, v in counts.items())

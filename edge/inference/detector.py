@@ -10,21 +10,15 @@ import cv2
 import numpy as np
 import openvino as ov
 
-MODEL_DIR = Path(__file__).resolve().parent.parent / "public" / "yolo-v26" / "ir_model"
+MODEL_DIR = Path(__file__).resolve().parent.parent / "public" / "neu-det"
 
-COCO_CLASSES = [
-    "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
-    "boat", "traffic light", "fire hydrant", "stop sign", "parking meter", "bench",
-    "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
-    "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee",
-    "skis", "snowboard", "sports ball", "kite", "baseball bat", "baseball glove",
-    "skateboard", "surfboard", "tennis racket", "bottle", "wine glass", "cup",
-    "fork", "knife", "spoon", "bowl", "banana", "apple", "sandwich", "orange",
-    "broccoli", "carrot", "hot dog", "pizza", "donut", "cake", "chair", "couch",
-    "potted plant", "bed", "dining table", "toilet", "tv", "laptop", "mouse",
-    "remote", "keyboard", "cell phone", "microwave", "oven", "toaster", "sink",
-    "refrigerator", "book", "clock", "vase", "scissors", "teddy bear", "hair drier",
-    "toothbrush",
+NEU_DET_CLASSES = [
+    "crazing",          # 裂纹
+    "inclusion",        # 夹杂
+    "patches",          # 斑块
+    "pitted_surface",   # 麻点
+    "rolled-in_scale",  # 氧化皮
+    "scratches",        # 划痕
 ]
 
 
@@ -73,7 +67,7 @@ class FrameResult:
 class YOLODetector:
     def __init__(self, model_path: str | None = None,
                  conf_threshold: float = 0.25, max_detections: int = 20) -> None:
-        model_path = model_path or str(MODEL_DIR / "yolo26n.xml")
+        model_path = model_path or str(MODEL_DIR / "yolo26n_neu_det.xml")
         self.conf_threshold = conf_threshold
         self.max_detections = max_detections
 
@@ -170,7 +164,7 @@ class YOLODetector:
 
             cls_id = int(label)
             results.append(Detection(
-                class_name=COCO_CLASSES[cls_id] if cls_id < len(COCO_CLASSES) else str(cls_id),
+                class_name=NEU_DET_CLASSES[cls_id] if cls_id < len(NEU_DET_CLASSES) else str(cls_id),
                 class_id=cls_id,
                 confidence=round(float(score), 4),
                 bbox=(x1, y1, x2, y2),
@@ -179,13 +173,12 @@ class YOLODetector:
 
     @staticmethod
     def _class_colors() -> dict[int, tuple[int, int, int]]:
-        # 为常见类别预定义颜色，其余随机
-        preset = {
-            0: (0, 0, 255), 2: (255, 0, 0), 5: (0, 255, 255), 7: (255, 255, 0),
-            9: (0, 128, 255), 11: (255, 128, 0),
+        # 6 类缺陷各有固定颜色
+        return {
+            0: (0, 0, 255),       # crazing — 红
+            1: (255, 128, 0),     # inclusion — 橙
+            2: (0, 255, 255),     # patches — 黄
+            3: (255, 0, 255),     # pitted_surface — 紫
+            4: (128, 128, 128),   # rolled-in_scale — 灰
+            5: (0, 255, 0),       # scratches — 绿
         }
-        rng = np.random.default_rng(42)
-        keys = set(range(80))
-        for k in keys - set(preset):
-            preset[k] = tuple(int(c) for c in rng.integers(0, 255, 3))
-        return preset
