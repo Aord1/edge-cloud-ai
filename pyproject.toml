@@ -47,6 +47,9 @@ dependencies = [
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.1",
     "loguru>=0.7.3",
+    "ultralytics>=8.4.60",
+    "gdown>=6.1.0",
+    "kagglehub>=1.0.1",
 ]
 
 [project.optional-dependencies]
