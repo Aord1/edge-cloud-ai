@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ..inference.detector import Detection
-
-# 严重缺陷类别
-SEVERE_DEFECTS = {"crazing", "rolled-in_scale", "inclusion"}
+from ..inference.detector import SEVERE_DEFECTS, Detection
 
 
 @dataclass
@@ -40,16 +38,16 @@ class AlertEngine:
 
         if severe:
             atype = "severe"
-            msg_detail = _fmt(self._counts(severe))
+            msg_detail = _fmt(_counts(severe))
         elif len(names) > 1:
             atype = "multiple"
-            msg_detail = _fmt(self._counts(detections))
+            msg_detail = _fmt(_counts(detections))
         elif len(detections) > 3:
             atype = "dense"
             msg_detail = f"{len(detections)} 个"
         else:
             atype = "defect"
-            msg_detail = _fmt(self._counts(detections))
+            msg_detail = _fmt(_counts(detections))
 
         # 冷却检查
         now = time.time()
@@ -68,12 +66,9 @@ class AlertEngine:
     def recent(self, n: int = 20) -> list[Alert]:
         return self._history[-n:]
 
-    @staticmethod
-    def _counts(detections: list[Detection]) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        for d in detections:
-            counts[d.class_name] = counts.get(d.class_name, 0) + 1
-        return counts
+
+def _counts(detections: list[Detection]) -> dict[str, int]:
+    return dict(Counter(d.class_name for d in detections))
 
 
 def _fmt(counts: dict[str, int]) -> str:

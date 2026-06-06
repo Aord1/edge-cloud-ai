@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 
 import httpx
 
@@ -16,13 +17,7 @@ def build_payload(
 ) -> tuple[dict, dict]:
     """构建 multipart 上传的 data 和 files。"""
     dets_json = json.dumps([
-        {
-            "class_name": d.class_name,
-            "class_id": d.class_id,
-            "confidence": d.confidence,
-            "bbox": list(d.bbox),
-        }
-        for d in detections
+        {**asdict(d), "bbox": list(d.bbox)} for d in detections
     ])
     data = {
         "device_id": device_id,

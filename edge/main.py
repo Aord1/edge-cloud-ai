@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import time
+from collections import deque
 
 import cv2
 import numpy as np
@@ -18,7 +19,7 @@ from .capture.camera import make_camera
 from .classify.alert import AlertEngine
 from .classify.decision import Action, classify
 from .config import edge_settings
-from .inference.detector import YOLODetector
+from .inference.detector import CLASS_COLORS, YOLODetector
 from .network.http_client import upload_sync
 
 
@@ -51,7 +52,7 @@ def main(argv: list[str] | None = None) -> None:
     print("[Edge] 按 q 退出")
     cam.open()
 
-    fps_window: list[float] = []
+    fps_window = deque(maxlen=30)
     edge_count = 0
     cloud_count = 0
 
@@ -90,8 +91,6 @@ def main(argv: list[str] | None = None) -> None:
             # ── 终端日志 ──
             elapsed = time.perf_counter() - t0
             fps_window.append(1.0 / max(elapsed, 0.001))
-            if len(fps_window) > 30:
-                fps_window.pop(0)
             actual_fps = sum(fps_window) / len(fps_window)
 
             if result.count:
@@ -120,57 +119,35 @@ def main(argv: list[str] | None = None) -> None:
         print(f"[Edge] 已停止  edge:{edge_count}  cloud:{cloud_count}")
 
 
-# ── 绘制 ──────────────────────────────────────────────────────
-
-COLORS: dict[int, tuple[int, int, int]] = {
-    0: (0, 0, 255),       # crazing — 红
-    1: (255, 128, 0),     # inclusion — 橙
-    2: (0, 255, 255),     # patches — 黄
-    3: (255, 0, 255),     # pitted_surface — 紫
-    4: (128, 128, 128),   # rolled-in_scale — 灰
-    5: (0, 255, 0),       # scratches — 绿
-}
-
-
 def _annotate(frame: np.ndarray, result, decision, fps: float) -> np.ndarray:
-    annotated = frame.copy()
-    for d in result.detections:
-        c = COLORS.get(d.class_id, (0, 255, 0))
-        x1, y1, x2, y2 = d.bbox
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), c, 2)
-        label = f"{d.class_name} {d.confidence:.2f}"
-        (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-        cv2.rectangle(annotated, (x1, y1 - th - 4), (x1 + tw + 4, y1), c, -1)
-        cv2.putText(annotated, label, (x1 + 2, y1 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-    # 状态栏
-    status = f"FPS:{fps:.0f} | 缺陷:{result.count} | "
-    status += "EDGE" if decision.action == Action.EDGE else ">>CLOUD"
-    color = (0, 255, 0) if decision.action == Action.EDGE else (0, 0, 255)
-    cv2.putText(annotated, status, (10, annotated.shape[0] - 14),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-    return annotated
-
+    return _draw_frame(frame.copy(), result, decision, fps, 1.0, 1.0)
 
 def _annotate_scaled(
     frame: np.ndarray, result, decision, sx: float, sy: float, fps: float,
 ) -> np.ndarray:
-    annotated = frame.copy()
+    return _draw_frame(frame.copy(), result, decision, fps, sx, sy)
+
+
+def _draw_frame(
+    frame: np.ndarray, result, decision,
+    fps: float, sx: float, sy: float,
+) -> np.ndarray:
     for d in result.detections:
-        c = COLORS.get(d.class_id, (0, 255, 0))
+        c = CLASS_COLORS.get(d.class_id, (0, 255, 0))
         x1, y1 = int(d.x1 * sx), int(d.y1 * sy)
         x2, y2 = int(d.x2 * sx), int(d.y2 * sy)
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), c, 2)
+        cv2.rectangle(frame, (x1, y1), (x2, y2), c, 2)
         label = f"{d.class_name} {d.confidence:.2f}"
         (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
-        cv2.rectangle(annotated, (x1, y1 - th - 4), (x1 + tw + 4, y1), c, -1)
-        cv2.putText(annotated, label, (x1 + 2, y1 - 4),
+        cv2.rectangle(frame, (x1, y1 - th - 4), (x1 + tw + 4, y1), c, -1)
+        cv2.putText(frame, label, (x1 + 2, y1 - 4),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
-    status = f"FPS:{fps:.0f} | 缺陷:{result.count}"
+    status = f"FPS:{fps:.0f} | 缺陷:{result.count} | "
+    status += "EDGE" if decision.action == Action.EDGE else ">>CLOUD"
     color = (0, 255, 0) if decision.action == Action.EDGE else (0, 0, 255)
-    cv2.putText(annotated, status, (10, annotated.shape[0] - 14),
+    cv2.putText(frame, status, (10, frame.shape[0] - 14),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
-    return annotated
+    return frame
 
 
 if __name__ == "__main__":

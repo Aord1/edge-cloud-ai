@@ -5,10 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from ..inference.detector import NEU_DET_CLASSES, Detection, FrameResult
-
-# 相对严重的缺陷类别（需要云端深度复核）
-SEVERE_DEFECTS = {"crazing", "rolled-in_scale", "inclusion"}
+from ..inference.detector import NEU_DET_CLASSES, SEVERE_DEFECTS, Detection, FrameResult
 
 
 class Action(Enum):

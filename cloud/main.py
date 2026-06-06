@@ -12,6 +12,7 @@ from .config import settings
 from .db.engine import dispose_engine, get_engine
 from .db.models import Base
 from .api.routes_detect import router as detect_router
+from .api.routes_chat import router as chat_router
 
 
 @asynccontextmanager
@@ -39,6 +40,7 @@ app.add_middleware(
 )
 
 app.include_router(detect_router)
+app.include_router(chat_router)
 
 
 def main() -> None:

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -23,7 +24,7 @@ class EdgeSettings(BaseSettings):
     mqtt_username: str = "edgecloud"
     mqtt_password: str = ""
 
-    model_config = dict(
+    model_config = ConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore",
     )
 

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..config import DATASET_DIR, DEPLOY_DIR, IR_XML, ROOT
+from edge.inference.detector import YOLODetector
+
+from ..config import DATASET_DIR, DEPLOY_DIR, IR_XML
 
 
 def validate(model_path: Path | None = None) -> bool:
@@ -12,11 +14,6 @@ def validate(model_path: Path | None = None) -> bool:
     model_path = model_path or Path(DEPLOY_DIR / "yolo26n_neu_det.xml")
     if not model_path.exists():
         raise FileNotFoundError(f"IR 模型未找到: {model_path}\n请先运行 export.py")
-
-    import sys
-    sys.path.insert(0, str(ROOT))
-
-    from edge.inference.detector import YOLODetector
 
     print(f"[验证] 加载: {model_path}")
     detector = YOLODetector(model_path=str(model_path))

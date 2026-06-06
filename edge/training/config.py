@@ -39,6 +39,8 @@ DEVICE = "cuda"
 IR_XML = IR_DIR / "yolo26n_neu_det.xml"
 IR_BIN = IR_DIR / "yolo26n_neu_det.bin"
 
-# ── 初始化 ─────────────────────────────────────────────────
-for _d in [DATA_DIR, DATASET_DIR, WEIGHTS_DIR, RUNS_DIR, IR_DIR, DEPLOY_DIR]:
-    _d.mkdir(parents=True, exist_ok=True)
+
+def ensure_dirs() -> None:
+    """按需创建训练相关目录。"""
+    for _d in [DATA_DIR, DATASET_DIR, WEIGHTS_DIR, RUNS_DIR, IR_DIR, DEPLOY_DIR]:
+        _d.mkdir(parents=True, exist_ok=True)

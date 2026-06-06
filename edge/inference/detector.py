@@ -21,6 +21,17 @@ NEU_DET_CLASSES = [
     "scratches",        # 划痕
 ]
 
+SEVERE_DEFECTS = {"crazing", "rolled-in_scale", "inclusion"}
+
+CLASS_COLORS: dict[int, tuple[int, int, int]] = {
+    0: (0, 0, 255),       # crazing — 红
+    1: (255, 128, 0),     # inclusion — 橙
+    2: (0, 255, 255),     # patches — 黄
+    3: (255, 0, 255),     # pitted_surface — 紫
+    4: (128, 128, 128),   # rolled-in_scale — 灰
+    5: (0, 255, 0),       # scratches — 绿
+}
+
 
 @dataclass
 class Detection:
@@ -105,10 +116,9 @@ class YOLODetector:
 
     def annotate(self, frame: np.ndarray, result: FrameResult) -> np.ndarray:
         annotated = frame.copy()
-        colors = self._class_colors()
         for d in result.detections:
             x1, y1, x2, y2 = d.bbox
-            color = colors.get(d.class_id, (0, 255, 0))
+            color = CLASS_COLORS.get(d.class_id, (0, 255, 0))
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
             label = f"{d.class_name} {d.confidence:.2f}"
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
@@ -170,15 +180,3 @@ class YOLODetector:
                 bbox=(x1, y1, x2, y2),
             ))
         return results
-
-    @staticmethod
-    def _class_colors() -> dict[int, tuple[int, int, int]]:
-        # 6 类缺陷各有固定颜色
-        return {
-            0: (0, 0, 255),       # crazing — 红
-            1: (255, 128, 0),     # inclusion — 橙
-            2: (0, 255, 255),     # patches — 黄
-            3: (255, 0, 255),     # pitted_surface — 紫
-            4: (128, 128, 128),   # rolled-in_scale — 灰
-            5: (0, 255, 0),       # scratches — 绿
-        }

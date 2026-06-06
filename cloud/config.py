@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
+from sqlalchemy import URL
 
 
 class CloudSettings(BaseSettings):
@@ -36,12 +38,16 @@ class CloudSettings(BaseSettings):
 
     @property
     def db_url(self) -> str:
-        return (
-            f"postgresql+asyncpg://{self.db_user}:{self.db_password}"
-            f"@{self.db_host}:{self.db_port}/{self.db_name}"
-        )
+        return URL.create(
+            "postgresql+asyncpg",
+            username=self.db_user,
+            password=self.db_password,
+            host=self.db_host,
+            port=self.db_port,
+            database=self.db_name,
+        ).render_as_string(hide_password=False)
 
-    model_config = dict(
+    model_config = ConfigDict(
         env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore",
     )
 

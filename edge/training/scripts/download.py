@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import shutil
-import zipfile
 from pathlib import Path
 
 from ..config import DATA_DIR
@@ -50,14 +49,6 @@ def _copy_dataset(src: Path, dst: Path) -> None:
         shutil.rmtree(dst)
     shutil.copytree(src, dst)
     print(f"  已复制到 {dst}")
-
-
-def _pack_to_zip(src_dir: Path, zip_path: Path) -> None:
-    """将目录打包成 ZIP（备用）。"""
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for f in src_dir.rglob("*"):
-            if f.is_file():
-                zf.write(f, f.relative_to(src_dir))
 
 
 if __name__ == "__main__":
