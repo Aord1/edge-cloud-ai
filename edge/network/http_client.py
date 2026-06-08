@@ -3,22 +3,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 
 import httpx
 
-from ..inference.detector import Detection
-
 
 def build_payload(
-    device_id: str, detections: list[Detection], reason: str,
+    device_id: str, detections: list[dict], reason: str,
     avg_confidence: float, inference_ms: float, timestamp: float,
     frame_jpg: bytes | None,
 ) -> tuple[dict, dict]:
-    """构建 multipart 上传的 data 和 files。"""
-    dets_json = json.dumps([
-        {**asdict(d), "bbox": list(d.bbox)} for d in detections
-    ])
+    dets_json = json.dumps([{**d, "bbox": list(d["bbox"])} for d in detections])
     data = {
         "device_id": device_id,
         "reason": reason,
@@ -34,7 +28,7 @@ def build_payload(
 
 
 async def upload(
-    api_url: str, device_id: str, detections: list[Detection], reason: str,
+    api_url: str, device_id: str, detections: list[dict], reason: str,
     avg_confidence: float, inference_ms: float, timestamp: float,
     frame_jpg: bytes | None = None,
 ) -> dict:
@@ -49,7 +43,7 @@ async def upload(
 
 
 def upload_sync(
-    api_url: str, device_id: str, detections: list[Detection], reason: str,
+    api_url: str, device_id: str, detections: list[dict], reason: str,
     avg_confidence: float, inference_ms: float, timestamp: float,
     frame_jpg: bytes | None = None,
 ) -> dict:

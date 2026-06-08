@@ -22,6 +22,47 @@ router = APIRouter(prefix="/api/v1", tags=["detection"])
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+# ── Agent 复核队列（单消费者，避免并发雪崩）──
+
+_review_queue: asyncio.Queue[uuid.UUID] = asyncio.Queue(maxsize=200)
+_queued_ids: set[uuid.UUID] = set()
+_consumer_started = False
+
+
+async def _start_review_consumer() -> None:
+    """后台启动一次，全局单例。"""
+    global _consumer_started
+    if _consumer_started:
+        return
+    _consumer_started = True
+    asyncio.create_task(_review_consumer())
+
+
+async def _review_consumer() -> None:
+    """串行消费队列中的复核请求，避免同时发起大量 LLM 调用。"""
+    print("[ReviewQueue] 消费者启动")
+    while True:
+        defect_id = await _review_queue.get()
+        _queued_ids.discard(defect_id)
+        try:
+            await _do_review(defect_id)
+        except Exception as e:
+            print(f"[ReviewQueue] 复核失败 {defect_id}: {e}")
+        _review_queue.task_done()
+        # 间隔 2 秒，避免速率过高
+        await asyncio.sleep(2)
+
+
+def _enqueue_review(defect_id: uuid.UUID) -> None:
+    if defect_id not in _queued_ids:
+        _queued_ids.add(defect_id)
+        try:
+            _review_queue.put_nowait(defect_id)
+        except asyncio.QueueFull:
+            pass  # 队列满则丢弃（太多待复核）
+
+
+# ── 路由 ──
 
 @router.post("/detect/upload", response_model=DetectionUploadResponse)
 async def upload_detection(
@@ -54,35 +95,45 @@ async def upload_detection(
     db.add(log)
     await db.flush()
 
-    # 自动触发 Agent 复核（后台运行，不阻塞响应）
-    defect_id = log.id
-    asyncio.create_task(_auto_review(defect_id, dets, device_id, reason))
+    # 入队（单消费者串行处理，不会堆叠）
+    _enqueue_review(log.id)
 
     return DetectionUploadResponse(
-        id=defect_id,
-        message=f"已接收 {len(dets)} 条检测结果，Agent 复核中...",
+        id=log.id,
+        message=f"已接收 {len(dets)} 条检测结果",
     )
 
 
-async def _auto_review(defect_id: uuid.UUID, dets: list, device_id: str,
-                       reason: str) -> None:
-    """后台任务：调用 Agent 复核缺陷，结果写入 DB。"""
-    try:
-        from ..agent import agent
+async def _do_review(defect_id: uuid.UUID) -> None:
+    """实际执行一条 Agent 复核（由消费者串行调用）。"""
+    from ..agent import agent
 
-        defect_types = ", ".join(set(d.get("class_name", "?") for d in dets))
-        confs = ", ".join(f"{d.get('class_name','?')}:{d.get('confidence',0):.2f}" for d in dets)
-        prompt = (
-            f"请复核以下钢材表面缺陷:\n"
-            f"设备: {device_id}\n"
-            f"原因: {reason}\n"
-            f"缺陷: {defect_types}\n"
-            f"置信度: {confs}\n"
-            f"请给出判定结论和处理建议。"
+    # 读取记录内容
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DetectionLog).where(DetectionLog.id == defect_id)
         )
+        log_entry = result.scalar_one_or_none()
+        if not log_entry:
+            return
+        dets = log_entry.detections
+        device_id = log_entry.device_id
+        reason = log_entry.reason
 
-        full_text = []
-        tool_calls = []
+    defect_types = ", ".join(set(d.get("class_name", "?") for d in dets))
+    confs = ", ".join(f"{d.get('class_name','?')}:{d.get('confidence',0):.2f}" for d in dets)
+    prompt = (
+        f"请复核以下钢材表面缺陷:\n"
+        f"设备: {device_id}\n"
+        f"原因: {reason}\n"
+        f"缺陷: {defect_types}\n"
+        f"置信度: {confs}\n"
+        f"请给出判定结论和处理建议。"
+    )
+
+    full_text = []
+    tool_calls = []
+    try:
         async for event in agent.stream(prompt, thread_id=str(defect_id)):
             if event["type"] == "text":
                 full_text.append(event["content"])
@@ -91,24 +142,22 @@ async def _auto_review(defect_id: uuid.UUID, dets: list, device_id: str,
                     "tool": event.get("tool_name", ""),
                     "input": str(event.get("tool_input", "")),
                 })
-
-        review = {
-            "verdict": "",
-            "reasoning": "".join(full_text),
-            "tool_calls": tool_calls,
-            "reviewed_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        # 写入 DB（独立 session）
-        async with AsyncSessionLocal() as session:
-            result = await session.execute(
-                select(DetectionLog).where(DetectionLog.id == defect_id)
-            )
-            log_entry = result.scalar_one_or_none()
-            if log_entry:
-                log_entry.agent_review = review
-                await session.commit()
-                print(f"[AutoReview] {defect_id} 复核完成")
-
     except Exception as e:
-        print(f"[AutoReview] {defect_id} 复核失败: {e}")
+        full_text.append(f"[Agent 调用失败: {e}]")
+
+    review = {
+        "verdict": "",
+        "reasoning": "".join(full_text),
+        "tool_calls": tool_calls,
+        "reviewed_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DetectionLog).where(DetectionLog.id == defect_id)
+        )
+        log_entry = result.scalar_one_or_none()
+        if log_entry:
+            log_entry.agent_review = review
+            await session.commit()
+            print(f"[Review] {str(defect_id)[:8]} 复核完成")

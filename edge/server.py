@@ -37,6 +37,7 @@ from .classify.decision import Action, classify
 from .config import edge_settings
 from .inference.detector import CLASS_COLORS, YOLODetector
 from .network.http_client import upload_sync
+from .tracking import DefectTracker
 
 
 # ── HTTP Handler ────────────────────────────────────────────────
@@ -191,6 +192,7 @@ class EdgeServer:
         self._records: list[dict] = []
         self._edge_count = 0
         self._cloud_count = 0
+        self._tracker = DefectTracker(iou_threshold=0.3, min_frames=1)
 
     # ── 生命周期 ──
 
@@ -283,6 +285,7 @@ class EdgeServer:
         self._records.clear()
         self._edge_count = 0
         self._cloud_count = 0
+        self._tracker.reset()
         self._status["state"] = "running"
         self._detect_thread = threading.Thread(target=self._detection_loop, daemon=True)
         self._detect_thread.start()
@@ -361,23 +364,25 @@ class EdgeServer:
                     if alert:
                         self._edge_count += 1
 
-                # 上传云端
+                # 上传云端（经 tracker 去重：同一缺陷只上传一次）
                 if decision.action == Action.CLOUD:
-                    _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                    try:
-                        r = upload_sync(
-                            self._api_url, self._device_id,
-                            decision.upload, decision.reason,
-                            result.avg_confidence, result.inference_ms, result.timestamp,
-                            frame_jpg=bytes(jpg),
-                        )
-                        cloud_id = r.get("id", "")
-                        self._cloud_count += 1
-                        if result.count:
-                            print(f"  [上传云端] {decision.summary} → {r.get('message', 'ok')}")
-                    except Exception as e:
-                        cloud_id = ""
-                        print(f"  [上传失败] {e}")
+                    new_defects = self._tracker.update(decision.upload)
+                    if new_defects:
+                        _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                        try:
+                            r = upload_sync(
+                                self._api_url, self._device_id,
+                                new_defects, decision.reason,
+                                result.avg_confidence, result.inference_ms, result.timestamp,
+                                frame_jpg=bytes(jpg),
+                            )
+                            cloud_id = r.get("id", "")
+                            self._cloud_count += 1
+                            names = ", ".join(d["class_name"] for d in new_defects)
+                            print(f"  [上传云端] {names} ({len(new_defects)}/{len(decision.upload)}个新缺陷) → {r.get('message', 'ok')}")
+                        except Exception as e:
+                            cloud_id = ""
+                            print(f"  [上传失败] {e}")
 
                     # 记录（供 Web 端查看）
                     if result.count:

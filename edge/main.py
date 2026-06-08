@@ -108,7 +108,9 @@ def main(argv: list[str] | None = None) -> None:
                 try:
                     r = upload_sync(
                         args.api_url, args.device_id,
-                        decision.upload, decision.reason,
+                        [{"class_name": d.class_name, "class_id": d.class_id,
+                          "confidence": d.confidence, "bbox": list(d.bbox)}
+                         for d in decision.upload], decision.reason,
                         result.avg_confidence, result.inference_ms, result.timestamp,
                         frame_jpg=bytes(jpg),
                     )
