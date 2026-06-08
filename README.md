@@ -7,7 +7,9 @@
 ```
 edge-cloud-ai/
 ├── edge/                     # 边缘端（工控机）
-│   ├── main.py               # 入口：采集 → 检测 → 分类 → 告警/上传
+│   ├── main.py               # 入口：CLI 模式 / HTTP 服务模式
+│   ├── server.py             # HTTP 服务（REST 控制 + MJPEG 流）
+│   ├── stream.py             # 独立 MJPEG 流模块（CLI --web-stream 用）
 │   ├── inference/detector.py # YOLO26n + OpenVINO 推理引擎
 │   ├── capture/camera.py     # 相机/视频采集
 │   ├── classify/             # 缺陷分级 & 本地告警
@@ -21,8 +23,24 @@ edge-cloud-ai/
 │       └── ir/               # OpenVINO IR 导出
 ├── cloud/                    # 云端（FastAPI + PostgreSQL）
 │   ├── main.py               # FastAPI 入口
-│   ├── api/routes_detect.py  # 检测上传接口
-│   └── db/models.py          # ORM 模型
+│   ├── agent/                # AI Agent 引擎
+│   │   ├── orchestrator.py   # LangGraph ReAct 编排
+│   │   ├── prompts.py        # 系统提示词
+│   │   ├── models/           # LLM 模型提供者
+│   │   └── toolkit/          # 工具集（缺陷查询/统计/详情）
+│   ├── api/
+│   │   ├── routes_detect.py  # 检测上传 + 自动 Agent 复核
+│   │   ├── routes_chat.py    # SSE 流式对话
+│   │   └── routes_defects.py # 缺陷记录查询
+│   ├── db/models.py          # ORM（含 agent_review 存储）
+│   └── schemas/              # Pydantic 模型
+├── web/                      # 前端管理平台（Vue 3 + Vite，单页）
+│   ├── src/
+│   │   ├── views/Monitor.vue # 边端联动页（全功能）
+│   │   ├── api/client.js     # 云端 API + 边端 API
+│   │   └── router/index.js   # 路由
+│   ├── package.json
+│   └── vite.config.js
 ├── docker/
 │   └── docker-compose.yml    # PostgreSQL + pgvector
 ├── docs/                     # 需求文档 & 课程设计资料
@@ -145,14 +163,36 @@ python -m edge.training.scripts.validate
 
 ## 运行系统
 
-### 边缘端（检测）
+### 边缘端
+
+**服务模式（Web 端控制，推荐联调）**
+
+边端启动 HTTP 服务，由前端选择摄像头/视频并控制检测启停。
+
+```bash
+python -m edge.main --server
+```
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/stream` | `GET` | MJPEG 视频流（含 YOLO 标注） |
+| `/api/status` | `GET` | 当前检测状态 |
+| `/api/configure` | `POST` | 设置视频源、置信度等参数 |
+| `/api/start` | `POST` | 开始检测 |
+| `/api/stop` | `POST` | 停止检测 |
+| `/api/summary` | `GET` | 检测汇总 |
+
+**CLI 模式（本地直接运行）**
 
 ```bash
 # 使用默认相机
 python -m edge.main
 
 # 使用视频文件
-python -m edge.main -s edge/test/traffic_trim.mp4
+python -m edge.main -s test.mp4
+
+# CLI + MJPEG 流（Web 端可观看，不能控制）
+python -m edge.main -s test.mp4 --web-stream
 
 # 不上传云端（本地测试）
 python -m edge.main -s video.mp4 --no-upload
@@ -160,14 +200,18 @@ python -m edge.main -s video.mp4 --no-upload
 
 CLI 参数：
 
-| 参数             | 说明              | 默认值                           |
-| ---------------- | ----------------- | -------------------------------- |
-| `-s, --source` | 视频路径或相机 ID | `0`（默认相机）                |
-| `--fps`        | 处理帧率          | —                               |
-| `--conf`       | 检测置信度阈值    | `0.5`                          |
-| `--no-show`    | 不显示画面        | —                               |
-| `--no-upload`  | 不上传云端        | —                               |
-| `--api-url`    | 云端 API 地址     | `http://localhost:8000/api/v1` |
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `-s, --source` | 视频路径或相机 ID | `0` |
+| `--fps` | 处理帧率 | — |
+| `--conf` | YOLO 置信度阈值 | `0.3` |
+| `--conf-edge` | 边缘本地处理阈值 | `0.5` |
+| `--no-show` | 不显示 OpenCV 窗口 | — |
+| `--no-upload` | 不上传云端 | — |
+| `--server` | HTTP 服务模式 | — |
+| `--web-stream` | CLI 模式开启 MJPEG 流 | — |
+| `--web-port` | HTTP/MJPEG 端口 | `8080` |
+| `--api-url` | 云端 API 地址 | `http://localhost:8000/api/v1` |
 
 ### 云端（API 服务）
 
@@ -176,8 +220,59 @@ python -m cloud.main
 ```
 
 - FastAPI 服务启动在 `http://0.0.0.0:8000`
-- API 文档：`http://localhost:8000/docs`
-- 接口：`POST /api/v1/detect/upload` — 接收检测结果 + 关键帧
+- Swagger 文档：`http://localhost:8000/docs`
+
+| 方法 | 接口 | 说明 |
+|------|------|------|
+| `POST` | `/api/v1/detect/upload` | 缺陷上传（multipart），上传后自动触发 Agent 后台复核 |
+| `GET` | `/api/v1/defects?limit=50` | 查询最近缺陷记录（含 `agent_review` 复核结果） |
+| `POST` | `/api/v1/chat` | AI 对话（SSE 流式），也可独立使用 |
+
+### 前端管理平台
+
+单页应用，在浏览器内完成全流程：选择视频源 → 控制检测 → 实时查看 YOLO 标注画面 → 缺陷自动 Agent 复核 → 检测结束汇总。
+
+```bash
+cd web
+npm install
+npm run dev        # 开发服务器 → http://localhost:5173
+```
+
+页面布局：
+
+```
+   [摄像头 ● / 视频文件 ○] [置信度 0.3] [▶ 开始检测]
+┌──────────────────────────┬──────────────────────────┐
+│                          │ 缺陷记录 & Agent 复核      │
+│     MJPEG 视频流         │ ┌────────────────────────┐│
+│   (含 YOLO 标注框)       │ │ 12:34 crazing    72%   ▾││
+│                          │ │  🤖 Agent 复核结论      ││
+│                          │ │  "该裂纹长度超过标准..."  ││
+│                          │ │  ▸ 使用工具: defect_stats││
+│                          │ ├────────────────────────┤│
+│                          │ │ 12:35 inclusion  58%   ▸││
+│                          │ └────────────────────────┘│
+│                          │ [检测完成] 总 5 | 复核 3    │
+└──────────────────────────┴──────────────────────────┘
+```
+
+- **左栏** — 控制面板（视频源选择 + 置信度 + 启动/停止)+ 实时视频
+- **右栏** — 缺陷记录列表，点击展开查看 Agent 复核结论；检测停止后显示汇总
+
+### 全链路启动（开发联调）
+
+```bash
+# 终端 1: 边端（服务模式，等待 Web 控制）
+python -m edge.main --server
+
+# 终端 2: 云端（含自动 Agent 复核）
+python -m cloud.main
+
+# 终端 3: 前端
+cd web && npm run dev
+```
+
+打开 `http://localhost:5173`，选择摄像头或视频文件，点击「开始检测」。
 
 ---
 

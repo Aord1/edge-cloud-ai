@@ -37,6 +37,8 @@ class DetectionLogOut(BaseModel):
     detections: list[DetectionItem]
     avg_confidence: float
     inference_ms: float
+    image_path: str | None = None
+    agent_review: dict | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

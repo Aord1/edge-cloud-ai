@@ -24,6 +24,7 @@ class DetectionLog(Base):
     image_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     avg_confidence: Mapped[float] = mapped_column(Float)
     inference_ms: Mapped[float] = mapped_column(Float)
+    agent_review: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

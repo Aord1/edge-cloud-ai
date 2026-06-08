@@ -1,9 +1,10 @@
 """边缘端主入口 — 视频采集 → NEU-DET 缺陷检测 → 分类 → 告警/上传。
 
 用法:
-    python -m edge.main                      # 默认摄像头
-    python -m edge.main -s test.mp4          # 视频文件
-    python -m edge.main -s 0 --no-upload     # 仅检测不上传
+    python -m edge.main --server                    # HTTP 服务模式（Web 端控制）
+    python -m edge.main -s test.mp4                 # CLI 检测模式
+    python -m edge.main -s test.mp4 --web-stream    # CLI + MJPEG 流
+    python -m edge.main -s 0 --no-upload            # 仅检测不上传
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from .classify.decision import Action, classify
 from .config import edge_settings
 from .inference.detector import CLASS_COLORS, YOLODetector
 from .network.http_client import upload_sync
+from .stream import EdgeStreamServer
+from .server import EdgeServer
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -35,7 +38,28 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--no-upload", action="store_true", help="禁用上传")
     p.add_argument("--api-url", default="http://localhost:8000/api/v1", help="云端地址")
     p.add_argument("--device-id", default="camera-01")
+    p.add_argument("--web-stream", action="store_true", help="开启 MJPEG 流供 Web 端查看")
+    p.add_argument("--web-port", type=int, default=8080, help="MJPEG 流端口")
+    p.add_argument("--server", action="store_true", help="HTTP 服务模式，由 Web 端控制检测")
+    p.add_argument("--server-host", default="0.0.0.0", help="服务监听地址")
     args = p.parse_args(argv)
+
+    # ── 服务模式：启动 HTTP 服务，等待 Web 端控制 ──
+    if args.server:
+        server = EdgeServer(host=args.server_host, port=args.web_port)
+        server.configure(
+            source=args.source, conf=args.conf, conf_edge=args.conf_edge,
+            api_url=args.api_url, device_id=args.device_id,
+        )
+        server.start()
+        print(f"[Edge] 服务模式 — Web 端访问 http://localhost:{args.web_port}")
+        print("[Edge] 按 Ctrl+C 退出")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            server.stop()
+        return
 
     src = int(args.source) if args.source.lstrip("-").isdigit() else args.source
     cam = make_camera(source=src, fps=args.fps)
@@ -50,6 +74,11 @@ def main(argv: list[str] | None = None) -> None:
     else:
         print(f"[Edge] 云端: {args.api_url}")
     print("[Edge] 按 q 退出")
+
+    stream_server: EdgeStreamServer | None = None
+    if args.web_stream:
+        stream_server = EdgeStreamServer(port=args.web_port)
+        stream_server.start()
     cam.open()
 
     fps_window = deque(maxlen=30)
@@ -113,9 +142,34 @@ def main(argv: list[str] | None = None) -> None:
                 delay = 1 if cam.is_live else int(1000 / cam.fps)
                 if cv2.waitKey(delay) & 0xFF == ord("q"):
                     break
+
+            # ── Web 流推送 ──
+            if stream_server:
+                h, w = frame.shape[:2]
+                web_w = 960
+                if w > web_w:
+                    ws = web_w / w
+                    web_frame = cv2.resize(frame, (web_w, int(h * ws)))
+                    web_annotated = _annotate_scaled(web_frame, result, decision, ws, ws, actual_fps)
+                else:
+                    web_annotated = _annotate(frame, result, decision, actual_fps)
+                stream_server.push_frame(web_annotated)
+                stream_server.update_status({
+                    "detections": [
+                        {"class": d.class_name, "conf": d.confidence, "bbox": list(d.bbox)}
+                        for d in result.detections
+                    ],
+                    "count": result.count,
+                    "fps": round(actual_fps, 1),
+                    "inference_ms": result.inference_ms,
+                    "decision": "CLOUD" if decision.action == Action.CLOUD else "EDGE",
+                    "reason": decision.reason,
+                })
     finally:
         cam.close()
         cv2.destroyAllWindows()
+        if stream_server:
+            stream_server.stop()
         print(f"[Edge] 已停止  edge:{edge_count}  cloud:{cloud_count}")
 
 
