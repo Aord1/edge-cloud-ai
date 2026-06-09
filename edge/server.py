@@ -18,6 +18,7 @@
     GET  /api/summary     检测结束后返回汇总
 """
 
+
 from __future__ import annotations
 
 import json
@@ -87,7 +88,11 @@ class _Handler(BaseHTTPRequestHandler):
     def _read_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length > 0 else b"{}"
-        return json.loads(raw)
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            self._json({"ok": False, "error": "请求体 JSON 解析失败"})
+            return {}
 
     def _json(self, data: dict) -> None:
         body = json.dumps(data, ensure_ascii=False).encode()
@@ -138,10 +143,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         owner: EdgeServer = self.server._owner
         while owner._stream_running:
-            frame = owner._pop_frame(timeout=0.5)
+            frame = owner._pop_frame(timeout=edge_settings.mjpeg_frame_timeout)
             if frame is None:
                 continue
-            _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.mjpeg_quality])
             try:
                 self.wfile.write(b"--frame\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
@@ -160,16 +165,16 @@ class _Handler(BaseHTTPRequestHandler):
 class EdgeServer:
     """HTTP 服务器 + 检测控制器。"""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8080) -> None:
-        self._host = host
-        self._port = port
+    def __init__(self, host: str | None = None, port: int | None = None) -> None:
+        self._host = host if host is not None else edge_settings.server_host
+        self._port = port if port is not None else edge_settings.server_port
         self._http: HTTPServer | None = None
         self._http_thread: threading.Thread | None = None
 
         # 配置（Web 端通过 /api/configure 设置）
         self._source: str = "0"
-        self._conf: float = 0.3
-        self._conf_edge: float = 0.5
+        self._conf: float = edge_settings.detection_conf_threshold
+        self._conf_edge: float = edge_settings.detection_conf_edge
         self._api_url: str = edge_settings.edge_cloud_api_url
         self._device_id: str = edge_settings.edge_device_id
         self._video_dir: str = str(
@@ -209,17 +214,19 @@ class EdgeServer:
         if self._http:
             self._http.shutdown()
         if self._http_thread:
-            self._http_thread.join(timeout=3)
+            self._http_thread.join(timeout=edge_settings.server_thread_join_timeout)
         print("[EdgeServer] 已停止")
 
     # ── API: 配置 ──
 
-    def configure(self, source: str = "0", conf: float = 0.3,
-                  conf_edge: float = 0.5, api_url: str = "",
+    def configure(self, source: str = "0",
+                  conf: float | None = None,
+                  conf_edge: float | None = None,
+                  api_url: str = "",
                   device_id: str = "", video_dir: str = "") -> None:
         self._source = source
-        self._conf = conf
-        self._conf_edge = conf_edge
+        self._conf = conf if conf is not None else edge_settings.detection_conf_threshold
+        self._conf_edge = conf_edge if conf_edge is not None else edge_settings.detection_conf_edge
         if api_url:
             self._api_url = api_url
         if device_id:
@@ -248,7 +255,7 @@ class EdgeServer:
     def list_cameras(self) -> dict:
         import io, sys
         available = []
-        for idx in range(4):
+        for idx in range(edge_settings.camera_probe_max):
             old_stderr = sys.stderr
             sys.stderr = io.StringIO()
             try:
@@ -258,7 +265,7 @@ class EdgeServer:
             if cap.isOpened():
                 available.append(idx)
             cap.release()
-        return {"cameras": available, "max_probed": 3}
+        return {"cameras": available, "max_probed": edge_settings.camera_probe_max - 1}
 
     def upload_file(self, data: bytes) -> dict:
         """保存上传的视频/图片文件到 video_dir。"""
@@ -297,7 +304,7 @@ class EdgeServer:
             return {"ok": False, "error": "检测未在运行"}
         self._detect_running = False
         if self._detect_thread:
-            self._detect_thread.join(timeout=5)
+            self._detect_thread.join(timeout=edge_settings.server_detect_join_timeout)
         self._status["state"] = "stopped"
         print(f"[EdgeServer] 检测停止 edge={self._edge_count} cloud={self._cloud_count}")
         return {"ok": True, "status": "stopped",
@@ -338,10 +345,10 @@ class EdgeServer:
         detector = YOLODetector(
             model_path=edge_settings.model_path,
             conf_threshold=self._conf,
-            max_detections=20,
+            max_detections=edge_settings.detection_max_detections,
         )
         alerter = AlertEngine()
-        fps_window: deque[float] = deque(maxlen=30)
+        fps_window: deque[float] = deque(maxlen=edge_settings.fps_window_size)
 
         cam.open()
         try:
@@ -368,7 +375,7 @@ class EdgeServer:
                 if decision.action == Action.CLOUD:
                     new_defects = self._tracker.update(decision.upload)
                     if new_defects:
-                        _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                        _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.upload_jpeg_quality])
                         try:
                             r = upload_sync(
                                 self._api_url, self._device_id,
@@ -408,7 +415,7 @@ class EdgeServer:
 
                 # 生成 MJPEG 帧（960px 宽）
                 h, w = frame.shape[:2]
-                web_w = 960
+                web_w = edge_settings.mjpeg_stream_width
                 if w > web_w:
                     ws = web_w / w
                     web_frame = cv2.resize(frame, (web_w, int(h * ws)))

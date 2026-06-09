@@ -12,7 +12,7 @@ def create_llm() -> ChatOpenAI:
     kwargs: dict = {
         "model": settings.llm_model,
         "api_key": settings.llm_api_key,
-        "temperature": 0.3,
+        "temperature": settings.llm_temperature,
         "streaming": True,
     }
     if settings.llm_base_url:

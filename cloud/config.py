@@ -1,5 +1,5 @@
 """
-云端配置 — 仅可部署差异化项，其余参数由各模块自行硬编码默认值。
+云端配置 — 所有可配置参数的唯一入口，各模块从此处引用，消除硬编码重定义。
 """
 
 from __future__ import annotations
@@ -22,10 +22,17 @@ class CloudSettings(BaseSettings):
     db_user: str = "edgecloud"
     db_password: str = ""
 
+    # ── 数据库连接池 ──
+    db_pool_size: int = 5
+    db_max_overflow: int = 15
+    db_pool_recycle: int = 3600      # 连接回收时间（秒）
+    db_pool_timeout: int = 30        # 获取连接超时（秒）
+
     # ── LLM ──
     llm_api_key: str = ""
     llm_model: str = "gpt-4o"
-    llm_base_url: str = ""                      # 空 = 默认官方地址；代理时填入
+    llm_base_url: str = ""           # 空 = 默认官方地址；代理时填入
+    llm_temperature: float = 0.3
 
     # ── MQTT ──
     mqtt_broker_host: str = "localhost"
@@ -35,6 +42,20 @@ class CloudSettings(BaseSettings):
 
     # ── JWT ──
     jwt_secret_key: str = "change-in-production"
+
+    # ── Agent 复核队列 ──
+    review_queue_maxsize: int = 200       # 复核队列最大容量
+    review_consumer_interval: float = 2.0 # 消费者间隔（秒）
+
+    # ── API 默认值 ──
+    api_defects_limit: int = 30
+
+    # ── Agent 工具默认值 ──
+    agent_defect_history_limit: int = 10
+    agent_defect_stats_hours: int = 24
+
+    # ── 时区 ──
+    timezone_hours: int = 8               # UTC+8
 
     @property
     def db_url(self) -> str:

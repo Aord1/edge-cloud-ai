@@ -5,10 +5,11 @@ from datetime import datetime, timedelta, timezone
 from langchain_core.tools import tool
 from sqlalchemy import select
 
+from ...config import settings
 from ...db.models import DetectionLog
 from ...db.session import AsyncSessionLocal
 
-TZ = timezone(timedelta(hours=8))
+TZ = timezone(timedelta(hours=settings.timezone_hours))
 
 
 @tool

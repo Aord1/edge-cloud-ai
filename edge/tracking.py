@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from uuid import uuid4
 
+from .config import edge_settings
+
 
 def _iou(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> float:
     """计算两个边界框的 IoU。"""
@@ -32,9 +34,9 @@ class TrackedDefect:
 class DefectTracker:
     """轻量 IoU 跟踪器 — 为每个缺陷分配稳定 ID，防止重复上报。"""
 
-    def __init__(self, iou_threshold: float = 0.4, min_frames: int = 2) -> None:
-        self._iou_threshold = iou_threshold
-        self._min_frames = min_frames  # 至少出现 N 帧才上报（过滤噪点）
+    def __init__(self, iou_threshold: float | None = None, min_frames: int | None = None) -> None:
+        self._iou_threshold = iou_threshold if iou_threshold is not None else edge_settings.tracker_iou_threshold
+        self._min_frames = min_frames if min_frames is not None else edge_settings.tracker_min_frames
         self._tracks: list[TrackedDefect] = []
         self._uploaded_ids: set[str] = set()
 

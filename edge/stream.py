@@ -17,6 +17,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import cv2
 import numpy as np
 
+from .config import edge_settings
+
 
 class _StreamHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
@@ -36,10 +38,10 @@ class _StreamHandler(BaseHTTPRequestHandler):
         self.end_headers()
         server: EdgeStreamServer = self.server._owner  # type: ignore[attr-defined]
         while server._running:
-            frame = server._pop_frame(timeout=0.5)
+            frame = server._pop_frame(timeout=edge_settings.mjpeg_frame_timeout)
             if frame is None:
                 continue
-            _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.mjpeg_quality])
             try:
                 self.wfile.write(b"--frame\r\n")
                 self.wfile.write(b"Content-Type: image/jpeg\r\n")
@@ -66,9 +68,9 @@ class _StreamHandler(BaseHTTPRequestHandler):
 class EdgeStreamServer:
     """轻量 MJPEG 流服务器，后台线程运行。"""
 
-    def __init__(self, host: str = "0.0.0.0", port: int = 8080) -> None:
-        self._host = host
-        self._port = port
+    def __init__(self, host: str | None = None, port: int | None = None) -> None:
+        self._host = host if host is not None else edge_settings.server_host
+        self._port = port if port is not None else edge_settings.server_port
         self._server: HTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._running = False
@@ -90,7 +92,7 @@ class EdgeStreamServer:
         if self._server:
             self._server.shutdown()
         if self._thread:
-            self._thread.join(timeout=3)
+            self._thread.join(timeout=edge_settings.server_thread_join_timeout)
         print("[Stream] 流服务已停止")
 
     def push_frame(self, frame: np.ndarray) -> None:

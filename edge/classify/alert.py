@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from ..config import edge_settings
 from ..inference.detector import SEVERE_DEFECTS, Detection
 
 
@@ -23,8 +24,8 @@ class Alert:
 
 
 class AlertEngine:
-    def __init__(self, cooldown_sec: float = 30.0) -> None:
-        self.cooldown_sec = cooldown_sec
+    def __init__(self, cooldown_sec: float | None = None) -> None:
+        self.cooldown_sec = cooldown_sec if cooldown_sec is not None else edge_settings.alert_cooldown_sec
         self._last: dict[str, float] = {}
         self._history: list[Alert] = []
 
@@ -42,7 +43,7 @@ class AlertEngine:
         elif len(names) > 1:
             atype = "multiple"
             msg_detail = _fmt(_counts(detections))
-        elif len(detections) > 3:
+        elif len(detections) > edge_settings.alert_dense_threshold:
             atype = "dense"
             msg_detail = f"{len(detections)} 个"
         else:
@@ -59,8 +60,8 @@ class AlertEngine:
                       message=f"[缺陷告警] {msg_detail}",
                       detections=detections)
         self._history.append(alert)
-        if len(self._history) > 200:
-            self._history = self._history[-200:]
+        if len(self._history) > edge_settings.alert_history_max:
+            self._history = self._history[-edge_settings.alert_history_max:]
         return alert
 
     def recent(self, n: int = 20) -> list[Alert]:

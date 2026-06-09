@@ -30,18 +30,18 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Edge YOLO Detection")
     p.add_argument("-s", "--source", default="0")
     p.add_argument("--fps", type=int, default=0, help="0=视频自动/摄像头30")
-    p.add_argument("--conf", type=float, default=0.3, help="YOLO 置信度阈值")
-    p.add_argument("--conf-edge", type=float, default=0.5, help="边缘本地处理阈值")
-    p.add_argument("--max-det", type=int, default=20)
+    p.add_argument("--conf", type=float, default=edge_settings.detection_conf_threshold, help="YOLO 置信度阈值")
+    p.add_argument("--conf-edge", type=float, default=edge_settings.detection_conf_edge, help="边缘本地处理阈值")
+    p.add_argument("--max-det", type=int, default=edge_settings.detection_max_detections)
     p.add_argument("--display", type=int, default=1280, help="0=原始尺寸")
     p.add_argument("--no-show", action="store_true")
     p.add_argument("--no-upload", action="store_true", help="禁用上传")
-    p.add_argument("--api-url", default="http://localhost:8000/api/v1", help="云端地址")
-    p.add_argument("--device-id", default="camera-01")
+    p.add_argument("--api-url", default=edge_settings.edge_cloud_api_url, help="云端地址")
+    p.add_argument("--device-id", default=edge_settings.edge_device_id)
     p.add_argument("--web-stream", action="store_true", help="开启 MJPEG 流供 Web 端查看")
-    p.add_argument("--web-port", type=int, default=8080, help="MJPEG 流端口")
+    p.add_argument("--web-port", type=int, default=edge_settings.server_port, help="MJPEG 流端口")
     p.add_argument("--server", action="store_true", help="HTTP 服务模式，由 Web 端控制检测")
-    p.add_argument("--server-host", default="0.0.0.0", help="服务监听地址")
+    p.add_argument("--server-host", default=edge_settings.server_host, help="服务监听地址")
     args = p.parse_args(argv)
 
     # ── 服务模式：启动 HTTP 服务，等待 Web 端控制 ──
@@ -81,7 +81,7 @@ def main(argv: list[str] | None = None) -> None:
         stream_server.start()
     cam.open()
 
-    fps_window = deque(maxlen=30)
+    fps_window = deque(maxlen=edge_settings.fps_window_size)
     edge_count = 0
     cloud_count = 0
 
@@ -104,7 +104,7 @@ def main(argv: list[str] | None = None) -> None:
 
             # ── 上传云端 ──
             if decision.action == Action.CLOUD and not args.no_upload:
-                _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.upload_jpeg_quality])
                 try:
                     r = upload_sync(
                         args.api_url, args.device_id,
@@ -148,7 +148,7 @@ def main(argv: list[str] | None = None) -> None:
             # ── Web 流推送 ──
             if stream_server:
                 h, w = frame.shape[:2]
-                web_w = 960
+                web_w = edge_settings.mjpeg_stream_width
                 if w > web_w:
                     ws = web_w / w
                     web_frame = cv2.resize(frame, (web_w, int(h * ws)))

@@ -14,11 +14,11 @@ def get_engine() -> AsyncEngine:
     if _engine is None:
         _engine = create_async_engine(
             settings.db_url,
-            pool_size=5,
-            max_overflow=15,
-            pool_recycle=3600,
+            pool_size=settings.db_pool_size,
+            max_overflow=settings.db_max_overflow,
+            pool_recycle=settings.db_pool_recycle,
             pool_pre_ping=True,
-            pool_timeout=30,
+            pool_timeout=settings.db_pool_timeout,
             echo=False,
         )
     return _engine

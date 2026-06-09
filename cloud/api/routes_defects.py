@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import get_db
+from ..config import settings
 from ..db.models import DetectionLog
 from ..schemas.detection import DetectionLogOut
 
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/api/v1", tags=["defects"])
 
 @router.get("/defects", response_model=list[DetectionLogOut])
 async def list_defects(
-    limit: int = Query(default=30, ge=1, le=100),
+    limit: int = Query(default=settings.api_defects_limit, ge=1, le=100),
     device_id: str | None = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ) -> list[DetectionLogOut]:

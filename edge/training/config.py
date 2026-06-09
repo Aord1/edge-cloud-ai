@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ..inference.detector import NEU_DET_CLASSES as CLASSES
+
 # ── 目录 ──────────────────────────────────────────────────
 ROOT = Path(__file__).resolve().parent.parent.parent          # edge-cloud-ai/
 TRAINING_DIR = Path(__file__).resolve().parent                 # edge/training/
@@ -16,15 +18,6 @@ DEPLOY_DIR = ROOT / "edge" / "public" / "neu-det"              # 部署目标
 
 # ── 数据 ──────────────────────────────────────────────────
 DATA_YAML = DATASET_DIR / "data.yaml"
-
-CLASSES = [
-    "crazing",          # 裂纹
-    "inclusion",        # 夹杂
-    "patches",          # 斑块
-    "pitted_surface",   # 麻点
-    "rolled-in_scale",  # 氧化皮
-    "scratches",        # 划痕
-]
 
 CLASS2ID: dict[str, int] = {c: i for i, c in enumerate(CLASSES)}
 

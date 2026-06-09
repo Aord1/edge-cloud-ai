@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import get_db
+from ..config import settings
 from ..db.models import DetectionLog
 from ..db.session import AsyncSessionLocal
 from ..schemas.detection import DetectionUploadResponse
@@ -24,7 +25,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 # ── Agent 复核队列（单消费者，避免并发雪崩）──
 
-_review_queue: asyncio.Queue[uuid.UUID] = asyncio.Queue(maxsize=200)
+_review_queue: asyncio.Queue[uuid.UUID] = asyncio.Queue(maxsize=settings.review_queue_maxsize)
 _queued_ids: set[uuid.UUID] = set()
 _consumer_started = False
 
@@ -49,8 +50,8 @@ async def _review_consumer() -> None:
         except Exception as e:
             print(f"[ReviewQueue] 复核失败 {defect_id}: {e}")
         _review_queue.task_done()
-        # 间隔 2 秒，避免速率过高
-        await asyncio.sleep(2)
+        # 间隔 N 秒，避免速率过高
+        await asyncio.sleep(settings.review_consumer_interval)
 
 
 def _enqueue_review(defect_id: uuid.UUID) -> None:

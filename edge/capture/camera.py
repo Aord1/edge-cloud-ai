@@ -10,14 +10,16 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from ..config import edge_settings
+
 
 @dataclass
 class CaptureConfig:
     source: str | int = 0
-    width: int = 640
-    height: int = 480
-    target_fps: int = 30
-    buffer_size: int = 4
+    width: int = edge_settings.capture_width
+    height: int = edge_settings.capture_height
+    target_fps: int = edge_settings.capture_fps
+    buffer_size: int = edge_settings.capture_buffer_size
 
 
 class Camera:
@@ -34,7 +36,7 @@ class Camera:
         self._running = False
         self._thread: threading.Thread | None = None
         self._is_live: bool = False
-        self._fps: float = 30.0
+        self._fps: float = float(edge_settings.capture_fps)
 
     # ── 生命周期 ──────────────────────────────────────────────
 
@@ -47,7 +49,7 @@ class Camera:
         self._is_live = isinstance(self._source, int)
         if self._target_fps <= 0:
             native = self._cap.get(cv2.CAP_PROP_FPS)
-            self._target_fps = native if native > 0 else 30.0
+            self._target_fps = native if native > 0 else float(edge_settings.capture_fps)
         self._fps = self._target_fps
         if self._is_live:
             self._running = True
@@ -57,14 +59,16 @@ class Camera:
     def close(self) -> None:
         self._running = False
         if self._thread is not None:
-            self._thread.join(timeout=3)
+            self._thread.join(timeout=edge_settings.capture_thread_join_timeout)
         if self._cap is not None:
             self._cap.release()
 
     # ── 对外接口 ──────────────────────────────────────────────
 
-    def read(self, timeout: float = 2.0) -> np.ndarray | None:
+    def read(self, timeout: float | None = None) -> np.ndarray | None:
         """获取一帧。摄像头走缓冲，视频文件直接读。"""
+        if timeout is None:
+            timeout = edge_settings.capture_read_timeout
         if self._is_live:
             return self._read_live(timeout)
         return self._read_file()
@@ -116,6 +120,11 @@ class Camera:
         self.close()
 
 
-def make_camera(source: str | int = 0, width: int = 640, height: int = 480,
-                fps: int = 30) -> Camera:
-    return Camera(CaptureConfig(source=source, width=width, height=height, target_fps=fps))
+def make_camera(source: str | int = 0, width: int | None = None, height: int | None = None,
+                fps: int | None = None) -> Camera:
+    return Camera(CaptureConfig(
+        source=source,
+        width=width if width is not None else edge_settings.capture_width,
+        height=height if height is not None else edge_settings.capture_height,
+        target_fps=fps if fps is not None else edge_settings.capture_fps,
+    ))

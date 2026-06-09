@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+from ..config import edge_settings
 from ..inference.detector import NEU_DET_CLASSES, SEVERE_DEFECTS, Detection, FrameResult
 
 
@@ -22,7 +23,9 @@ class Decision:
     summary: str = ""
 
 
-def classify(result: FrameResult, conf_edge: float = 0.5) -> Decision:
+def classify(result: FrameResult, conf_edge: float | None = None) -> Decision:
+    if conf_edge is None:
+        conf_edge = edge_settings.detection_conf_edge
     dets = result.detections
     if not dets:
         return Decision(Action.EDGE, "empty", summary="无缺陷")
@@ -43,14 +46,14 @@ def classify(result: FrameResult, conf_edge: float = 0.5) -> Decision:
 
     # 多缺陷混杂 → 全部上传
     defect_types = {d.class_name for d in valid}
-    if len(defect_types) > 2:
+    if len(defect_types) > edge_settings.classify_mixed_types_threshold:
         return Decision(Action.CLOUD, "mixed_defects", upload=valid,
                         summary=f"混杂 {len(defect_types)} 类缺陷，上传深度分析")
 
     # 目标过多 → 上传
-    if len(valid) > 5:
+    if len(valid) > edge_settings.classify_crowded_threshold:
         return Decision(Action.CLOUD, "crowded", upload=valid,
-                        summary=f"缺陷过多 ({len(valid)} > 5)")
+                        summary=f"缺陷过多 ({len(valid)} > {edge_settings.classify_crowded_threshold})")
 
     # 有需上传的
     if upload:

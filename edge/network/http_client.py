@@ -6,6 +6,8 @@ import json
 
 import httpx
 
+from ..config import edge_settings
+
 
 def build_payload(
     device_id: str, detections: list[dict], reason: str,
@@ -36,7 +38,7 @@ async def upload(
     data, files = build_payload(
         device_id, detections, reason, avg_confidence, inference_ms, timestamp, frame_jpg,
     )
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=edge_settings.upload_http_timeout) as client:
         resp = await client.post(f"{api_url}/detect/upload", data=data, files=files)
         resp.raise_for_status()
         return resp.json()
@@ -51,6 +53,6 @@ def upload_sync(
     data, files = build_payload(
         device_id, detections, reason, avg_confidence, inference_ms, timestamp, frame_jpg,
     )
-    resp = httpx.post(f"{api_url}/detect/upload", data=data, files=files, timeout=30)
+    resp = httpx.post(f"{api_url}/detect/upload", data=data, files=files, timeout=edge_settings.upload_http_timeout)
     resp.raise_for_status()
     return resp.json()
