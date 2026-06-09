@@ -69,3 +69,4 @@ uv.lock
 downloads/
 uploads/
 !edge/uploads/.gitkeep
+edge/test/

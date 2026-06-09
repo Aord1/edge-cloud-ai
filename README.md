@@ -10,10 +10,13 @@ edge-cloud-ai/
 │   ├── main.py               # 入口：CLI 模式 / HTTP 服务模式
 │   ├── server.py             # HTTP 服务（REST 控制 + MJPEG 流）
 │   ├── stream.py             # 独立 MJPEG 流模块（CLI --web-stream 用）
+│   ├── config.py             # 边缘端统一配置入口
 │   ├── inference/detector.py # YOLO26n + OpenVINO 推理引擎
 │   ├── capture/camera.py     # 相机/视频采集
 │   ├── classify/             # 缺陷分级 & 本地告警
+│   ├── tracking.py           # 帧间跟踪去重
 │   ├── network/http_client.py# 云端上传
+│   ├── test/                 # 测试视频（.gitignore 排除）
 │   └── training/             # 模型训练流水线
 │       ├── config.py         # 训练配置（超参、路径、类别）
 │       ├── scripts/          # 训练脚本（5步）
@@ -45,7 +48,10 @@ edge-cloud-ai/
 │   └── docker-compose.yml    # PostgreSQL + pgvector
 ├── docs/                     # 需求文档 & 课程设计资料
 ├── pyproject.toml            # 项目配置 & 依赖
-└── .env.example              # 环境变量模板
+├── start.ps1                 # 一键启动脚本 (Windows PowerShell)
+├── start.sh                  # 一键启动脚本 (Bash / Linux / macOS)
+├── .env.example              # 环境变量模板
+└── .gitignore
 ```
 
 ## 环境准备
@@ -259,20 +265,82 @@ npm run dev        # 开发服务器 → http://localhost:5173
 - **左栏** — 控制面板（视频源选择 + 置信度 + 启动/停止)+ 实时视频
 - **右栏** — 缺陷记录列表，点击展开查看 Agent 复核结论；检测停止后显示汇总
 
-### 全链路启动（开发联调）
+### 全链路启动（一键脚本）
+
+**Windows (PowerShell)**：
+```powershell
+.\start.ps1              # 启动全部服务（DB + Cloud + Edge + Web）
+.\start.ps1 --no-db      # 跳过 Docker 数据库
+.\start.ps1 --no-web     # 跳过 Web 前端
+```
+
+**Git Bash / Linux / macOS**：
+```bash
+bash start.sh            # 启动全部服务
+bash start.sh --no-db    # 跳过 Docker
+bash start.sh --no-web   # 跳过 Web 前端
+```
+
+`Ctrl+C` 一键停止所有服务并清理 Docker 容器。
+
+启动后访问：
+| 服务 | 地址 |
+|------|------|
+| Web 管理端 | http://localhost:5173 |
+| Cloud API 文档 | http://localhost:8000/docs |
+| Edge 流 | http://localhost:8080/stream |
+| Edge 状态 | http://localhost:8080/api/status |
+
+### 全链路启动（手动分步）
 
 ```bash
-# 终端 1: 边端（服务模式，等待 Web 控制）
-python -m edge.main --server
+# 终端 1: 数据库
+docker compose -f docker/docker-compose.yml up -d
 
 # 终端 2: 云端（含自动 Agent 复核）
 python -m cloud.main
 
-# 终端 3: 前端
+# 终端 3: 边端（服务模式，等待 Web 控制）
+python -m edge.main --server
+
+# 终端 4: 前端
 cd web && npm run dev
 ```
 
-打开 `http://localhost:5173`，选择摄像头或视频文件，点击「开始检测」。
+### 生成测试视频
+
+项目不含钢材缺陷视频（NEU-DET 是图像数据集），可用验证集图片合成：
+
+```bash
+python -c "
+from pathlib import Path
+import cv2, random
+
+img_dir = Path('edge/training/dataset/images/val')
+imgs = sorted(img_dir.glob('*.jpg'))
+random.seed(42)
+random.shuffle(imgs)
+
+target = 640
+fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+writer = cv2.VideoWriter('edge/test/neu_det_test.avi', fourcc, 15, (target, target))
+
+for p in imgs[:100]:
+    frame = cv2.imread(str(p))
+    frame = cv2.resize(frame, (target, target))
+    if len(frame.shape) == 2:
+        frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    for _ in range(30):       # 每张图显示 2 秒
+        writer.write(frame)
+writer.release()
+print('视频已生成: edge/test/neu_det_test.avi')
+"
+```
+
+用生成的视频测试：
+```bash
+python -m edge.main -s edge/test/neu_det_test.avi --no-upload
+```
 
 ---
 

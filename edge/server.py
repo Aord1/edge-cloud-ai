@@ -28,6 +28,7 @@ import time
 import uuid
 from collections import deque
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -62,7 +63,8 @@ class _Handler(BaseHTTPRequestHandler):
         owner: EdgeServer = self.server._owner
         content_type = self.headers.get("Content-Type", "")
         if self.path == "/api/upload-file" and "multipart" in content_type:
-            result = owner.upload_file(self._parse_multipart())
+            fname, body = self._parse_multipart()
+            result = owner.upload_file(fname, body)
             self._json(result)
         else:
             body = self._read_body()
@@ -108,31 +110,34 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
-    def _parse_multipart(self) -> bytes:
-        """从 multipart/form-data 中提取第一个文件内容。"""
+    def _parse_multipart(self) -> tuple[str, bytes]:
+        """从 multipart/form-data 中提取第一个文件的文件名和内容。"""
         import email.parser
         content_type = self.headers.get("Content-Type", "")
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
-        # 解析 boundary 后的 body
         boundary = content_type.split("boundary=")[1].encode()
-        # 找第一个文件部分
         parts = raw.split(b"--" + boundary)
         for part in parts:
             if b"Content-Disposition" not in part:
                 continue
             if b"filename=" not in part:
                 continue
-            # 头部和正文用空行分隔
+            # 提取原始文件名
+            header, _, _ = part.partition(b"\r\n\r\n")
+            fname = "upload"
+            for line in header.split(b"\r\n"):
+                if b"filename=" in line:
+                    # 形如: Content-Disposition: form-data; name="file"; filename="test.avi"
+                    raw_fname = line.split(b'filename="')[-1].split(b'"')[0].decode("utf-8", "ignore")
+                    fname = raw_fname.strip()
+                    break
             header_end = part.find(b"\r\n\r\n")
-            if header_end == -1:
-                continue
             body = part[header_end + 4:]
-            # 去掉尾部 \r\n--
             if body.endswith(b"\r\n"):
                 body = body[:-2]
-            return body
-        return b""
+            return fname, body
+        return "upload", b""
 
     def _serve_mjpeg(self) -> None:
         self.send_response(200)
@@ -178,7 +183,7 @@ class EdgeServer:
         self._api_url: str = edge_settings.edge_cloud_api_url
         self._device_id: str = edge_settings.edge_device_id
         self._video_dir: str = str(
-            __import__("pathlib").Path(__file__).resolve().parent / "uploads"
+            Path(__file__).resolve().parent / "uploads"
         ).replace("\\", "/")
 
         # 检测线程
@@ -267,13 +272,14 @@ class EdgeServer:
             cap.release()
         return {"cameras": available, "max_probed": edge_settings.camera_probe_max - 1}
 
-    def upload_file(self, data: bytes) -> dict:
-        """保存上传的视频/图片文件到 video_dir。"""
+    def upload_file(self, original_name: str, data: bytes) -> dict:
+        """保存上传的视频/图片文件到 video_dir，保留原始扩展名。"""
         if not data:
             return {"ok": False, "error": "未收到文件"}
         d = self._video_dir or "."
         os.makedirs(d, exist_ok=True)
-        fname = f"upload_{uuid.uuid4().hex[:8]}.mp4"
+        ext = Path(original_name).suffix or ".mp4"
+        fname = f"upload_{uuid.uuid4().hex[:8]}{ext}"
         fpath = os.path.join(d, fname)
         with open(fpath, "wb") as f:
             f.write(data)
