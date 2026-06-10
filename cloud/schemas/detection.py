@@ -30,10 +30,23 @@ class DetectionUploadResponse(BaseModel):
     message: str = "检测数据已接收"
 
 
+class DefectReviewOut(BaseModel):
+    id: UUID
+    defect_log_id: UUID
+    verdict: str = ""
+    reasoning_chain: dict | None = None
+    tool_calls: dict | None = None
+    reviewed_by: str = ""
+    reviewed_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class DetectionLogOut(BaseModel):
     id: UUID
     device_id: str
     reason: str
+    decision: str = "CLOUD"
     detections: list[DetectionItem]
     avg_confidence: float
     inference_ms: float

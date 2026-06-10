@@ -39,6 +39,7 @@ from .classify.decision import Action, classify
 from .config import edge_settings
 from .inference.detector import CLASS_COLORS, YOLODetector
 from .network.http_client import upload_sync
+from .network.mqtt_client import EdgeMQTTClient
 from .tracking import DefectTracker
 
 
@@ -175,6 +176,7 @@ class EdgeServer:
         self._port = port if port is not None else edge_settings.server_port
         self._http: HTTPServer | None = None
         self._http_thread: threading.Thread | None = None
+        self._mqtt: EdgeMQTTClient | None = None
 
         # 配置（Web 端通过 /api/configure 设置）
         self._source: str = "0"
@@ -211,11 +213,22 @@ class EdgeServer:
         self._http._owner = self
         self._http_thread = threading.Thread(target=self._http.serve_forever, daemon=True)
         self._http_thread.start()
+
+        self._mqtt = EdgeMQTTClient()
+        if self._mqtt.connect():
+            print(f"[EdgeServer] MQTT 已连接 {edge_settings.mqtt_broker_host}:{edge_settings.mqtt_broker_port}")
+        else:
+            print("[EdgeServer] MQTT 连接失败，将回退到 HTTP")
+            self._mqtt = None
+
         print(f"[EdgeServer] http://{self._host}:{self._port}  (stream /api/*)")
 
     def stop(self) -> None:
         self.stop_detection()
         self._stream_running = False
+        if self._mqtt:
+            self._mqtt.disconnect()
+            self._mqtt = None
         if self._http:
             self._http.shutdown()
         if self._http_thread:
@@ -384,20 +397,36 @@ class EdgeServer:
                     new_defects = self._tracker.update(decision.upload)
                     if new_defects:
                         _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.upload_jpeg_quality])
-                        try:
-                            r = upload_sync(
-                                self._api_url, self._device_id,
+                        jpg_bytes = bytes(jpg)
+                        cloud_id = ""
+
+                        if self._mqtt and self._mqtt.connected:
+                            ok = self._mqtt.publish_defect(
                                 new_defects, decision.reason,
                                 result.avg_confidence, result.inference_ms, result.timestamp,
-                                frame_jpg=bytes(jpg),
+                                frame_jpg=jpg_bytes,
                             )
-                            cloud_id = r.get("id", "")
-                            self._cloud_count += 1
-                            names = ", ".join(d["class_name"] for d in new_defects)
-                            print(f"  [上传云端] {names} ({len(new_defects)}/{len(decision.upload)}个新缺陷) → {r.get('message', 'ok')}")
-                        except Exception as e:
-                            cloud_id = ""
-                            print(f"  [上传失败] {e}")
+                            if ok:
+                                self._cloud_count += 1
+                                names = ", ".join(d["class_name"] for d in new_defects)
+                                print(f"  [MQTT上传] {names} ({len(new_defects)}/{len(decision.upload)}个新缺陷)")
+                            else:
+                                print(f"  [MQTT上传失败]")
+                        else:
+                            try:
+                                r = upload_sync(
+                                    self._api_url, self._device_id,
+                                    new_defects, decision.reason,
+                                    result.avg_confidence, result.inference_ms, result.timestamp,
+                                    frame_jpg=jpg_bytes,
+                                )
+                                cloud_id = r.get("id", "")
+                                self._cloud_count += 1
+                                names = ", ".join(d["class_name"] for d in new_defects)
+                                print(f"  [HTTP上传] {names} ({len(new_defects)}/{len(decision.upload)}个新缺陷) → {r.get('message', 'ok')}")
+                            except Exception as e:
+                                cloud_id = ""
+                                print(f"  [上传失败] {e}")
 
                     # 记录（供 Web 端查看）
                     if result.count:

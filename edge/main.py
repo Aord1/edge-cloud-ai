@@ -2,7 +2,8 @@
 
 用法:
     python -m edge.main --server                    # HTTP 服务模式（Web 端控制）
-    python -m edge.main -s test.mp4                 # CLI 检测模式
+    python -m edge.main -s test.mp4                 # CLI MQTT 检测模式
+    python -m edge.main -s test.mp4 --use-http      # CLI HTTP 上传模式
     python -m edge.main -s test.mp4 --web-stream    # CLI + MJPEG 流
     python -m edge.main -s 0 --no-upload            # 仅检测不上传
 """
@@ -22,6 +23,7 @@ from .classify.decision import Action, classify
 from .config import edge_settings
 from .inference.detector import CLASS_COLORS, YOLODetector
 from .network.http_client import upload_sync
+from .network.mqtt_client import EdgeMQTTClient
 from .stream import EdgeStreamServer
 from .server import EdgeServer
 
@@ -36,6 +38,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--display", type=int, default=1280, help="0=原始尺寸")
     p.add_argument("--no-show", action="store_true")
     p.add_argument("--no-upload", action="store_true", help="禁用上传")
+    p.add_argument("--use-http", action="store_true", help="使用 HTTP 上传（默认 MQTT）")
     p.add_argument("--api-url", default=edge_settings.edge_cloud_api_url, help="云端地址")
     p.add_argument("--device-id", default=edge_settings.edge_device_id)
     p.add_argument("--web-stream", action="store_true", help="开启 MJPEG 流供 Web 端查看")
@@ -72,7 +75,17 @@ def main(argv: list[str] | None = None) -> None:
     if args.no_upload:
         print("[Edge] 上传已禁用")
     else:
-        print(f"[Edge] 云端: {args.api_url}")
+        mode = "HTTP" if args.use_http else "MQTT"
+        print(f"[Edge] 上传模式: {mode} → {args.api_url}")
+
+    mqtt: EdgeMQTTClient | None = None
+    if not args.no_upload and not args.use_http:
+        mqtt = EdgeMQTTClient()
+        if mqtt.connect():
+            print(f"[Edge] MQTT 已连接 {edge_settings.mqtt_broker_host}:{edge_settings.mqtt_broker_port}")
+        else:
+            print("[Edge] MQTT 连接失败，将回退到 HTTP 上传")
+            mqtt = None
     print("[Edge] 按 q 退出")
 
     stream_server: EdgeStreamServer | None = None
@@ -104,20 +117,35 @@ def main(argv: list[str] | None = None) -> None:
 
             # ── 上传云端 ──
             if decision.action == Action.CLOUD and not args.no_upload:
+                det_list = [{"class_name": d.class_name, "class_id": d.class_id,
+                             "confidence": d.confidence, "bbox": list(d.bbox)}
+                            for d in decision.upload]
                 _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.upload_jpeg_quality])
-                try:
-                    r = upload_sync(
-                        args.api_url, args.device_id,
-                        [{"class_name": d.class_name, "class_id": d.class_id,
-                          "confidence": d.confidence, "bbox": list(d.bbox)}
-                         for d in decision.upload], decision.reason,
+                jpg_bytes = bytes(jpg)
+
+                if mqtt and mqtt.connected:
+                    ok = mqtt.publish_defect(
+                        det_list, decision.reason,
                         result.avg_confidence, result.inference_ms, result.timestamp,
-                        frame_jpg=bytes(jpg),
+                        frame_jpg=jpg_bytes,
                     )
-                    print(f"  [上传云端] {decision.summary} → {r.get('message', 'ok')}")
-                    cloud_count += 1
-                except Exception as e:
-                    print(f"  [上传失败] {e}")
+                    if ok:
+                        print(f"  [MQTT上传] {decision.summary}")
+                        cloud_count += 1
+                    else:
+                        print(f"  [MQTT上传失败]")
+                else:
+                    try:
+                        r = upload_sync(
+                            args.api_url, args.device_id,
+                            det_list, decision.reason,
+                            result.avg_confidence, result.inference_ms, result.timestamp,
+                            frame_jpg=jpg_bytes,
+                        )
+                        print(f"  [HTTP上传] {decision.summary} → {r.get('message', 'ok')}")
+                        cloud_count += 1
+                    except Exception as e:
+                        print(f"  [上传失败] {e}")
 
             # ── 终端日志 ──
             elapsed = time.perf_counter() - t0
@@ -168,6 +196,8 @@ def main(argv: list[str] | None = None) -> None:
                     "reason": decision.reason,
                 })
     finally:
+        if mqtt:
+            mqtt.disconnect()
         cam.close()
         cv2.destroyAllWindows()
         if stream_server:

@@ -84,9 +84,21 @@ cp .env.example .env
 | `MQTT_PASSWORD`  | MQTT 密码（可选）                 | —               |
 | `JWT_SECRET_KEY` | JWT 签名密钥                      | 生产环境务必修改 |
 
-### 3. 数据库
+### 3. 数据库 & MQTT
 
-项目使用 PostgreSQL（支持 pgvector 扩展）。请确保数据库已运行，并在 `.env` 中配置正确的连接信息：
+项目使用 PostgreSQL（pgvector）和 Mosquitto MQTT Broker。
+
+**Docker 一键启动（推荐）**：
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+启动后即可获得：
+- PostgreSQL 数据库 `localhost:5432`
+- Mosquitto MQTT Broker `localhost:1883`
+
+数据库连接信息（在 `.env` 中配置）：
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
@@ -96,7 +108,14 @@ cp .env.example .env
 | `DB_USER` | 数据库用户 | `edgecloud` |
 | `DB_PASSWORD` | 数据库密码 | — |
 
-> 如需通过 Docker 快速启动数据库，可参考 `docker/docker-compose.yml`。
+MQTT 配置：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `mqtt_broker_host` | MQTT 地址 | `localhost` |
+| `mqtt_broker_port` | MQTT 端口 | `1883` |
+
+> 边缘端默认通过 MQTT 上传缺陷数据，MQTT 不可用时自动回退 HTTP 上传。
 
 ---
 

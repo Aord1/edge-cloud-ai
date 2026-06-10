@@ -46,7 +46,7 @@ if (-not $NoWeb) {
 }
 
 # ── 1. 检测数据库连通性 ──
-Write-Host "`n[1/4] 检测数据库连通性..." -ForegroundColor Cyan
+Write-Host "`n[1/5] 检测数据库连通性..." -ForegroundColor Cyan
 $dbCheck = python -c "
 from cloud.config import settings
 from sqlalchemy import text
@@ -70,23 +70,45 @@ if ($LASTEXITCODE -eq 0) {
     exit 1
 }
 
-# ── 2. 启动 Cloud API ──
-Write-Host "`n[2/4] 启动 Cloud API (localhost:8000)..." -ForegroundColor Cyan
+# ── 2. 检测 MQTT 连通性 ──
+Write-Host "`n[2/5] 检测 MQTT Broker..." -ForegroundColor Cyan
+$mqttCheck = python -c "
+from edge.config import edge_settings
+import socket
+s = socket.socket()
+s.settimeout(3)
+try:
+    s.connect((edge_settings.mqtt_broker_host, edge_settings.mqtt_broker_port))
+    print('connected')
+except Exception as e:
+    print(f'{e}')
+finally:
+    s.close()
+" 2>&1
+if ($mqttCheck -match 'connected') {
+    Write-Host "[OK]   MQTT Broker 已连接" -ForegroundColor Green
+} else {
+    Write-Host "[警告] MQTT 连接失败，将回退 HTTP 上传" -ForegroundColor Yellow
+    Write-Host "       请确保已启动 Docker: docker compose -f docker/docker-compose.yml up -d" -ForegroundColor Gray
+}
+
+# ── 3. 启动 Cloud API ──
+Write-Host "`n[3/5] 启动 Cloud API (localhost:8000)..." -ForegroundColor Cyan
 $cloudProc = Start-Process -FilePath python -ArgumentList "-m", "cloud.main" -NoNewWindow -PassThru
 $pids += $cloudProc
 Start-Sleep -Seconds 3
 Write-Host "[OK]   Cloud API 已启动" -ForegroundColor Green
 
-# ── 3. 启动 Edge Server ──
-Write-Host "`n[3/4] 启动 Edge Server (localhost:8080)..." -ForegroundColor Cyan
+# ── 4. 启动 Edge Server ──
+Write-Host "`n[4/5] 启动 Edge Server (localhost:8080)..." -ForegroundColor Cyan
 $edgeProc = Start-Process -FilePath python -ArgumentList "-m", "edge.main", "--server" -NoNewWindow -PassThru
 $pids += $edgeProc
 Start-Sleep -Seconds 2
 Write-Host "[OK]   Edge Server 已启动" -ForegroundColor Green
 
-# ── 4. 启动 Web 前端 ──
+# ── 5. 启动 Web 前端 ──
 if (-not $NoWeb) {
-    Write-Host "`n[4/4] 启动 Web 前端 (localhost:5173)..." -ForegroundColor Cyan
+    Write-Host "`n[5/5] 启动 Web 前端 (localhost:5173)..." -ForegroundColor Cyan
     if (-not (Test-Path "$projectRoot\web\node_modules")) {
         Write-Host "[安装] npm install..." -ForegroundColor Gray
         Push-Location "$projectRoot\web"

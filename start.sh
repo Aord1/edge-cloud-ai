@@ -39,7 +39,7 @@ fi
 
 # ── 1. 检测数据库连通性 ──
 echo ""
-echo "[1/4] 检测数据库连通性..."
+echo "[1/5] 检测数据库连通性..."
 db_check=$(python -c "
 from cloud.config import settings
 from sqlalchemy import text
@@ -63,26 +63,49 @@ else
     exit 1
 fi
 
-# ── 2. 启动 Cloud API ──
+# ── 2. 检测 MQTT 连通性 ──
 echo ""
-echo "[2/4] 启动 Cloud API (localhost:8000)..."
+echo "[2/5] 检测 MQTT Broker..."
+mqtt_check=$(python -c "
+from edge.config import edge_settings
+import socket
+s = socket.socket()
+s.settimeout(3)
+try:
+    s.connect((edge_settings.mqtt_broker_host, edge_settings.mqtt_broker_port))
+    print('connected')
+except Exception as e:
+    print(f'{e}')
+finally:
+    s.close()
+" 2>&1)
+if echo "$mqtt_check" | grep -q "connected"; then
+    echo "[OK]   MQTT Broker 已连接"
+else
+    echo "[警告] MQTT 连接失败，将回退 HTTP 上传"
+    echo "       请确保已启动: docker compose -f docker/docker-compose.yml up -d"
+fi
+
+# ── 3. 启动 Cloud API ──
+echo ""
+echo "[3/5] 启动 Cloud API (localhost:8000)..."
 python -m cloud.main &
 PIDS+=($!)
 sleep 3
 echo "[OK]   Cloud API 已启动"
 
-# ── 3. 启动 Edge Server ──
+# ── 4. 启动 Edge Server ──
 echo ""
-echo "[3/4] 启动 Edge Server (localhost:8080)..."
+echo "[4/5] 启动 Edge Server (localhost:8080)..."
 python -m edge.main --server &
 PIDS+=($!)
 sleep 2
 echo "[OK]   Edge Server 已启动"
 
-# ── 4. 启动 Web 前端 ──
+# ── 5. 启动 Web 前端 ──
 if [ "$NO_WEB" = false ]; then
     echo ""
-    echo "[4/4] 启动 Web 前端 (localhost:5173)..."
+    echo "[5/5] 启动 Web 前端 (localhost:5173)..."
     if [ ! -d "$SCRIPT_DIR/web/node_modules" ]; then
         echo "[安装] npm install..."
         (cd "$SCRIPT_DIR/web" && npm install)

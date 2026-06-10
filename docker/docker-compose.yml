@@ -1,4 +1,4 @@
-# ── 边云协同数据库服务 ──────────────────────────────────────
+# ── 边云协同服务 ──────────────────────────────────────────
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -17,5 +17,20 @@ services:
       timeout: 3s
       retries: 5
 
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: edgecloud-mqtt
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+      - mqttdata:/mosquitto/data
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 -W 1 || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
 volumes:
   pgdata:
+  mqttdata:
