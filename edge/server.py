@@ -38,6 +38,7 @@ from .classify.alert import AlertEngine
 from .classify.decision import Action, classify
 from .config import edge_settings
 from .inference.detector import CLASS_COLORS, YOLODetector
+from .inference.visual import put_chinese_text
 from .network.http_client import upload_sync
 from .network.mqtt_client import EdgeMQTTClient
 from .tracking import DefectTracker
@@ -506,6 +507,5 @@ def _draw_frame(frame: np.ndarray, result, decision,
     status = f"FPS:{fps:.0f} | 缺陷:{result.count} | "
     status += "EDGE" if decision.action == Action.EDGE else ">>CLOUD"
     color = (0, 255, 0) if decision.action == Action.EDGE else (0, 0, 255)
-    cv2.putText(frame, status, (10, frame.shape[0] - 14),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+    put_chinese_text(frame, status, (10, frame.shape[0] - 32), font_size=20, color=color)
     return frame
