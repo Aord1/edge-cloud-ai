@@ -15,7 +15,9 @@ edge-cloud-ai/
 │   ├── capture/camera.py     # 相机/视频采集
 │   ├── classify/             # 缺陷分级 & 本地告警
 │   ├── tracking.py           # 帧间跟踪去重
-│   ├── network/http_client.py# 云端上传
+│   ├── network/
+│   │   ├── mqtt_client.py   # MQTT 边缘客户端（发布缺陷 + 订阅告警）
+│   │   └── http_client.py   # 云端 HTTP 上传（MQTT 不可用时回退）
 │   ├── test/                 # 测试视频（.gitignore 排除）
 │   └── training/             # 模型训练流水线
 │       ├── config.py         # 训练配置（超参、路径、类别）
@@ -25,7 +27,7 @@ edge-cloud-ai/
 │       ├── runs/             # 训练产物
 │       └── ir/               # OpenVINO IR 导出
 ├── cloud/                    # 云端（FastAPI + PostgreSQL）
-│   ├── main.py               # FastAPI 入口
+│   ├── main.py               # FastAPI 入口（lifespan 自动启动 MQTT）
 │   ├── agent/                # AI Agent 引擎
 │   │   ├── orchestrator.py   # LangGraph ReAct 编排
 │   │   ├── prompts.py        # 系统提示词
@@ -35,6 +37,7 @@ edge-cloud-ai/
 │   │   ├── routes_detect.py  # 检测上传 + 自动 Agent 复核
 │   │   ├── routes_chat.py    # SSE 流式对话
 │   │   └── routes_defects.py # 缺陷记录查询
+│   ├── mqtt/handler.py       # MQTT 云端处理器（订阅 + 桥接 asyncio）
 │   ├── db/models.py          # ORM（含 agent_review 存储）
 │   └── schemas/              # Pydantic 模型
 ├── web/                      # 前端管理平台（Vue 3 + Vite，单页）
@@ -45,7 +48,8 @@ edge-cloud-ai/
 │   ├── package.json
 │   └── vite.config.js
 ├── docker/
-│   └── docker-compose.yml    # PostgreSQL + pgvector
+│   ├── docker-compose.yml    # PostgreSQL + pgvector + Mosquitto MQTT
+│   └── mosquitto.conf        # MQTT Broker 配置（开发模式匿名访问）
 ├── docs/                     # 需求文档 & 课程设计资料
 ├── pyproject.toml            # 项目配置 & 依赖
 ├── start.ps1                 # 一键启动脚本 (Windows PowerShell)
@@ -116,6 +120,34 @@ MQTT 配置：
 | `mqtt_broker_port` | MQTT 端口 | `1883` |
 
 > 边缘端默认通过 MQTT 上传缺陷数据，MQTT 不可用时自动回退 HTTP 上传。
+
+### 4. MQTT 通信架构
+
+系统通过 MQTT 实现边缘端与云端的**双向异步通信**：
+
+```
+Edge  ──publish──> edge/{device_id}/defect/upload ──> Cloud (订阅)
+Edge  <──subscribe── edge/{device_id}/alert <── Cloud (发布)
+```
+
+| 组件 | Topic | 方向 | 说明 |
+|------|-------|------|------|
+| 缺陷上传 | `edge/{device_id}/defect/upload` | Edge → Cloud | 检测到需云端处理的缺陷时发布，payload 含检测结果 + base64 帧图像 |
+| 告警推送 | `edge/{device_id}/alert` | Cloud → Edge | Agent 复核完成后推送告警/建议回边端 |
+| 云端通配订阅 | `edge/+/defect/upload` | — | Cloud 用 `+` 通配符订阅所有设备的上传 |
+
+**MQTT 客户端的启动由应用自动完成，无需手动操作**：
+
+| 时机 | 组件 | 触发位置 |
+|------|------|----------|
+| Cloud 启动 | `cloud/mqtt/handler.py:24` | `cloud/main.py` 的 FastAPI `lifespan` 自动调用 `start_mqtt()` |
+| Edge CLI 启动 | `edge/network/mqtt_client.py:45` | `edge/main.py:82` 创建 `EdgeMQTTClient` 并调用 `connect()` |
+| Edge Server 启动 | `edge/network/mqtt_client.py:45` | `edge/server.py:217` 在 `EdgeServer.start()` 中自动连接 |
+
+**MQTT 不可用时的降级策略**：
+- 边缘端尝试 MQTT 连接，失败后自动回退到 HTTP `POST /api/v1/detect/upload` 上传
+- 云端尝试 MQTT 连接，失败后打印警告并继续运行（仅影响 MQTT 通道，HTTP 上传仍正常）
+- Broker 恢复后客户端自动重连（5s 间隔）
 
 ---
 
@@ -306,7 +338,15 @@ bash start.sh            # 启动全部服务
 bash start.sh --no-web   # 跳过 Web 前端
 ```
 
-脚本启动时自动检测数据库连通性（通过 `.env` 配置连接），验证通过后依次拉起 Cloud API → Edge Server → Web 前端。
+脚本启动流程（5 步）：
+
+| 步骤 | 操作 | 说明 |
+|------|------|------|
+| 1/5 | 数据库连通性检测 | 通过 `.env` 配置连接 PostgreSQL，失败则退出 |
+| 2/5 | MQTT Broker 检测 | socket 连通性检查，失败则警告但不中断（回退 HTTP） |
+| 3/5 | 启动 Cloud API | `python -m cloud.main` → 端口 8000，lifespan 中自动连接 MQTT |
+| 4/5 | 启动 Edge Server | `python -m edge.main --server` → 端口 8080，启动时自动连接 MQTT |
+| 5/5 | 启动 Web 前端 | `npm run dev` → 端口 5173 |
 
 `Ctrl+C` 一键停止所有服务。
 
