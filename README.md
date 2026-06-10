@@ -84,11 +84,19 @@ cp .env.example .env
 | `MQTT_PASSWORD`  | MQTT 密码（可选）                 | —               |
 | `JWT_SECRET_KEY` | JWT 签名密钥                      | 生产环境务必修改 |
 
-### 3. 启动数据库（可选，训练不需要）
+### 3. 数据库
 
-```bash
-docker compose -f docker/docker-compose.yml up -d
-```
+项目使用 PostgreSQL（支持 pgvector 扩展）。请确保数据库已运行，并在 `.env` 中配置正确的连接信息：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `DB_HOST` | 数据库地址 | `localhost` |
+| `DB_PORT` | 数据库端口 | `5432` |
+| `DB_NAME` | 数据库名 | `edge_cloud` |
+| `DB_USER` | 数据库用户 | `edgecloud` |
+| `DB_PASSWORD` | 数据库密码 | — |
+
+> 如需通过 Docker 快速启动数据库，可参考 `docker/docker-compose.yml`。
 
 ---
 
@@ -269,19 +277,19 @@ npm run dev        # 开发服务器 → http://localhost:5173
 
 **Windows (PowerShell)**：
 ```powershell
-.\start.ps1              # 启动全部服务（DB + Cloud + Edge + Web）
-.\start.ps1 --no-db      # 跳过 Docker 数据库
+.\start.ps1              # 启动全部服务
 .\start.ps1 --no-web     # 跳过 Web 前端
 ```
 
 **Git Bash / Linux / macOS**：
 ```bash
 bash start.sh            # 启动全部服务
-bash start.sh --no-db    # 跳过 Docker
 bash start.sh --no-web   # 跳过 Web 前端
 ```
 
-`Ctrl+C` 一键停止所有服务并清理 Docker 容器。
+脚本启动时自动检测数据库连通性（通过 `.env` 配置连接），验证通过后依次拉起 Cloud API → Edge Server → Web 前端。
+
+`Ctrl+C` 一键停止所有服务。
 
 启动后访问：
 | 服务 | 地址 |
@@ -294,16 +302,13 @@ bash start.sh --no-web   # 跳过 Web 前端
 ### 全链路启动（手动分步）
 
 ```bash
-# 终端 1: 数据库
-docker compose -f docker/docker-compose.yml up -d
-
-# 终端 2: 云端（含自动 Agent 复核）
+# 终端 1: 云端（含自动 Agent 复核）
 python -m cloud.main
 
-# 终端 3: 边端（服务模式，等待 Web 控制）
+# 终端 2: 边端（服务模式，等待 Web 控制）
 python -m edge.main --server
 
-# 终端 4: 前端
+# 终端 3: 前端
 cd web && npm run dev
 ```
 

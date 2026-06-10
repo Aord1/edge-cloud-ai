@@ -19,7 +19,7 @@ class CloudSettings(BaseSettings):
     db_host: str = "localhost"
     db_port: int = 5432
     db_name: str = "edge_cloud"
-    db_user: str = "edgecloud"
+    db_user: str = "postgres"
     db_password: str = ""
 
     # ── 数据库连接池 ──

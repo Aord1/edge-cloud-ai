@@ -309,11 +309,13 @@ class EdgeServer:
         if not self._detect_running:
             return {"ok": False, "error": "检测未在运行"}
         self._detect_running = False
-        if self._detect_thread:
-            self._detect_thread.join(timeout=edge_settings.server_detect_join_timeout)
-        self._status["state"] = "stopped"
-        print(f"[EdgeServer] 检测停止 edge={self._edge_count} cloud={self._cloud_count}")
-        return {"ok": True, "status": "stopped",
+        self._status["state"] = "stopping"
+        # 不阻塞 HTTP 响应，后台等待检测线程退出
+        dt = self._detect_thread
+        if dt and dt.is_alive():
+            threading.Thread(target=dt.join, daemon=True).start()
+        print(f"[EdgeServer] 检测停止中 edge={self._edge_count} cloud={self._cloud_count}")
+        return {"ok": True, "status": "stopping",
                 "edge_count": self._edge_count, "cloud_count": self._cloud_count}
 
     # ── 查询 ──

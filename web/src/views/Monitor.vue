@@ -61,7 +61,7 @@
             <label>置信度</label>
             <input v-model.number="confidence" class="small-input" type="number" step="0.05" min="0.1" max="0.9" style="width:60px" :disabled="running" />
             <button v-if="!running" class="btn-start" @click="doStart" :disabled="starting || !canStart">{{ starting ? '启动中...' : '▶ 开始' }}</button>
-            <button v-else class="btn-stop" @click="doStop">■ 停止</button>
+            <button v-else class="btn-stop" @click="doStop" :disabled="stopping">■ 停止</button>
           </div>
           <div v-if="error" class="error-bar">{{ error }}</div>
         </div>
@@ -131,7 +131,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
-  edgeConfigure, edgeStart, edgeStop, edgeStatus, edgeStreamUrl,
+  edgeConfigure, edgeStart, edgeStop, edgeStatus, edgeStreamUrl, edgeSummary,
   edgeListFiles, edgeListCameras, edgeUploadFile, fetchDefects,
 } from '../api/client.js'
 
@@ -146,6 +146,7 @@ const uploading = ref(false)
 const confidence = ref(0.3)
 const running = ref(false)
 const starting = ref(false)
+const stopping = ref(false)
 const error = ref('')
 
 const canStart = computed(() => {
@@ -166,6 +167,7 @@ const records = ref([])
 const expanded = ref(null)
 let edgePoll = null
 let cloudPoll = null
+let edgeRecordPoll = null
 
 const cloudCount = computed(() => records.value.filter(r => r.decision === 'CLOUD').length)
 const edgeCount = computed(() => records.value.filter(r => r.decision === 'EDGE').length)
@@ -228,10 +230,15 @@ async function doStart() {
 }
 
 async function doStop() {
+  stopping.value = true
   try { await edgeStop() } catch {}
   running.value = false
+  stopping.value = false
   stopPolling()
-  await refreshDefects()
+  setTimeout(async () => {
+    await refreshEdgeRecords()
+    await refreshDefects()
+  }, 1500)
 }
 
 function toggleExpand(id) {
@@ -245,23 +252,59 @@ function startPolling() {
       const s = await edgeStatus()
       edgeOk.value = true
       fps.value = s.fps || 0
-      if (s.state === 'stopped' && running.value) { running.value = false; stopPolling(); await refreshDefects() }
+      if ((s.state === 'stopped' || s.state === 'stopping') && running.value) {
+        running.value = false
+        stopPolling()
+        await refreshEdgeRecords()
+        await refreshDefects()
+        mergeAllRecords()
+      }
     } catch { edgeOk.value = false }
   }, 1000)
   cloudPoll = setInterval(refreshDefects, 2000)
+  edgeRecordPoll = setInterval(refreshEdgeRecords, 3000)
 }
 
 function stopPolling() {
   clearInterval(edgePoll)
   clearInterval(cloudPoll)
+  clearInterval(edgeRecordPoll)
 }
+
+const _cloudList = ref([])
+const _edgeList = ref([])
 
 async function refreshDefects() {
   try {
     const res = await fetchDefects(50)
     cloudOk.value = true
-    records.value = res.data
+    _cloudList.value = res.data.map(r => ({ ...r, decision: r.decision || 'CLOUD' }))
   } catch { cloudOk.value = false }
+  mergeAllRecords()
+}
+
+async function refreshEdgeRecords() {
+  try {
+    const r = await edgeSummary()
+    _edgeList.value = (r.records || []).map((item, i) => ({
+      id: `edge_${i}`,
+      device_id: '',
+      reason: item.reason || '',
+      detections: (item.defect_types || []).map(t => ({ class_name: t })),
+      avg_confidence: item.avg_confidence ?? 0,
+      inference_ms: 0,
+      agent_review: null,
+      decision: item.decision || 'EDGE',
+      created_at: item.time ? `2000-01-01T${item.time}` : new Date().toISOString(),
+    }))
+  } catch {}
+  mergeAllRecords()
+}
+
+function mergeAllRecords() {
+  const merged = [..._edgeList.value, ..._cloudList.value]
+  merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  records.value = merged
 }
 
 // ── 格式化 ──
