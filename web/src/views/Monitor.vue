@@ -285,8 +285,6 @@ onUnmounted(() => {
   clearInterval(cloudPoll)
 })
 
-let cloudPoll = null
-
 // ── 分页 ──
 function goPage(p) {
   if (p < 1 || p > totalPages.value) return
