@@ -365,17 +365,27 @@ async function doStop() {
 }
 
 // ── 轮询（仅状态） ──
+let edgeFailCount = 0
 function startPolling() {
+  edgeFailCount = 0
   edgePoll = setInterval(async () => {
     try {
       const s = await edgeStatus()
       edgeOk.value = true
+      edgeFailCount = 0
       fps.value = s.fps || 0
       if ((s.state === 'stopped' || s.state === 'stopping') && running.value) {
         running.value = false
         stopPolling()
       }
-    } catch { edgeOk.value = false }
+    } catch {
+      edgeOk.value = false
+      edgeFailCount++
+      if (edgeFailCount >= 3 && running.value) {
+        running.value = false
+        stopPolling()
+      }
+    }
   }, 1000)
 }
 
