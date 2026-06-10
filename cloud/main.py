@@ -14,6 +14,7 @@ from .db.models import Base
 from .api.routes_detect import router as detect_router
 from .api.routes_chat import router as chat_router
 from .api.routes_defects import router as defects_router
+from .api.routes_llm import router as llm_router
 from .mqtt.handler import start_mqtt, stop_mqtt
 from .services.review import process_upload, start_review_consumer
 
@@ -68,6 +69,7 @@ app.add_middleware(
 app.include_router(detect_router)
 app.include_router(chat_router)
 app.include_router(defects_router)
+app.include_router(llm_router)
 
 
 def main() -> None:

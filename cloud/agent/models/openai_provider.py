@@ -1,20 +1,20 @@
-"""LLM 工厂 — 基于配置创建 ChatOpenAI 实例。"""
+"""LLM 工厂 — 基于运行时配置创建 ChatOpenAI 实例（支持热切换）。"""
 
 from __future__ import annotations
 
 from langchain_openai import ChatOpenAI
 
-from ...config import settings
+from ..llm_config import llm_runtime
 
 
 def create_llm() -> ChatOpenAI:
-    """根据云配置创建 ChatOpenAI 实例。"""
+    """根据运行时配置创建 ChatOpenAI 实例。"""
     kwargs: dict = {
-        "model": settings.llm_model,
-        "api_key": settings.llm_api_key,
-        "temperature": settings.llm_temperature,
+        "model": llm_runtime.model,
+        "api_key": llm_runtime.api_key,
+        "temperature": llm_runtime.temperature,
         "streaming": True,
     }
-    if settings.llm_base_url:
-        kwargs["base_url"] = settings.llm_base_url
+    if llm_runtime.base_url:
+        kwargs["base_url"] = llm_runtime.base_url
     return ChatOpenAI(**kwargs)

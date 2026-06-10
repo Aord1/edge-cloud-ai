@@ -27,6 +27,7 @@ from .network.http_client import upload_sync
 from .network.mqtt_client import EdgeMQTTClient
 from .stream import EdgeStreamServer
 from .server import EdgeServer
+from .tracking import DefectTracker
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -69,6 +70,7 @@ def main(argv: list[str] | None = None) -> None:
     cam = make_camera(source=src, fps=args.fps)
     detector = YOLODetector(model_path=edge_settings.model_path, conf_threshold=args.conf, max_detections=args.max_det)
     alerter = AlertEngine()
+    tracker = DefectTracker()
 
     kind = "摄像头" if isinstance(src, int) else f"文件 {src!r}"
     print(f"[Edge] {kind}  fps={'自动' if args.fps <= 0 else args.fps}  "
@@ -116,37 +118,36 @@ def main(argv: list[str] | None = None) -> None:
                     print(f"  [本地告警] {alert.message}")
                     edge_count += 1
 
-            # ── 上传云端 ──
+            # ── 上传云端（经 tracker 去重：同一缺陷只上传一次）──
             if decision.action == Action.CLOUD and not args.no_upload:
-                det_list = [{"class_name": d.class_name, "class_id": d.class_id,
-                             "confidence": d.confidence, "bbox": list(d.bbox)}
-                            for d in decision.upload]
-                _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.upload_jpeg_quality])
-                jpg_bytes = bytes(jpg)
+                new_defects = tracker.update(decision.upload)
+                if new_defects:
+                    _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.upload_jpeg_quality])
+                    jpg_bytes = bytes(jpg)
 
-                if mqtt and mqtt.connected:
-                    ok = mqtt.publish_defect(
-                        det_list, decision.reason,
-                        result.avg_confidence, result.inference_ms, result.timestamp,
-                        frame_jpg=jpg_bytes,
-                    )
-                    if ok:
-                        print(f"  [MQTT上传] {decision.summary}")
-                        cloud_count += 1
-                    else:
-                        print(f"  [MQTT上传失败]")
-                else:
-                    try:
-                        r = upload_sync(
-                            args.api_url, args.device_id,
-                            det_list, decision.reason,
+                    if mqtt and mqtt.connected:
+                        ok = mqtt.publish_defect(
+                            new_defects, decision.reason,
                             result.avg_confidence, result.inference_ms, result.timestamp,
                             frame_jpg=jpg_bytes,
                         )
-                        print(f"  [HTTP上传] {decision.summary} → {r.get('message', 'ok')}")
-                        cloud_count += 1
-                    except Exception as e:
-                        print(f"  [上传失败] {e}")
+                        if ok:
+                            print(f"  [MQTT上传] {decision.summary} ({len(new_defects)}个新缺陷)")
+                            cloud_count += 1
+                        else:
+                            print(f"  [MQTT上传失败]")
+                    else:
+                        try:
+                            r = upload_sync(
+                                args.api_url, args.device_id,
+                                new_defects, decision.reason,
+                                result.avg_confidence, result.inference_ms, result.timestamp,
+                                frame_jpg=jpg_bytes,
+                            )
+                            print(f"  [HTTP上传] {decision.summary} ({len(new_defects)}个新缺陷) → {r.get('message', 'ok')}")
+                            cloud_count += 1
+                        except Exception as e:
+                            print(f"  [上传失败] {e}")
 
             # ── 终端日志 ──
             elapsed = time.perf_counter() - t0

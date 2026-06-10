@@ -71,3 +71,13 @@ export async function edgeUploadFile(file) {
 export function edgeStreamUrl() {
   return `${EDGE_BASE}/stream`
 }
+
+// ── LLM 配置 API ──
+
+export function fetchLlmConfig() {
+  return apiClient.get('/api/v1/llm/config')
+}
+
+export function updateLlmConfig(data) {
+  return apiClient.put('/api/v1/llm/config', data)
+}

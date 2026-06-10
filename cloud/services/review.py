@@ -101,22 +101,25 @@ async def _do_review(defect_id: uuid.UUID) -> None:
         dets = log_entry.detections
         device_id = log_entry.device_id
         reason = log_entry.reason
+        image_path = log_entry.image_path
 
     defect_types = ", ".join(set(d.get("class_name", "?") for d in dets))
     confs = ", ".join(f"{d.get('class_name','?')}:{d.get('confidence',0):.2f}" for d in dets)
     prompt = (
-        f"请复核以下钢材表面缺陷:\n"
+        f"请复核以下钢材表面缺陷（附缺陷图片）:\n"
         f"设备: {device_id}\n"
         f"原因: {reason}\n"
         f"缺陷: {defect_types}\n"
         f"置信度: {confs}\n"
-        f"请给出判定结论和处理建议。"
+        f"请结合图片给出判定结论和处理建议。"
     )
 
     full_text = []
     tool_calls = []
     try:
-        async for event in agent.stream(prompt, thread_id=str(defect_id)):
+        async for event in agent.stream_with_image(
+            prompt, image_path=image_path or "", thread_id=str(defect_id)
+        ):
             if event["type"] == "text":
                 full_text.append(event["content"])
             elif event["type"] == "tool_call":

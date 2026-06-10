@@ -73,6 +73,7 @@ class DefectTracker:
                     updates.append({
                         "track_id": best_track.track_id,
                         "class_name": det.class_name,
+                        "class_id": det.class_id,
                         "confidence": det.confidence,
                         "bbox": list(det.bbox),
                         "reason": "new_defect",
@@ -90,6 +91,7 @@ class DefectTracker:
                     updates.append({
                         "track_id": tid,
                         "class_name": det.class_name,
+                        "class_id": det.class_id,
                         "confidence": det.confidence,
                         "bbox": list(det.bbox),
                         "reason": "new_defect",

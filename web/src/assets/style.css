@@ -374,3 +374,39 @@ html, body, #app {
 .summary-item {
   color: var(--text2);
 }
+
+/* ── LLM 切换面板 ── */
+
+.top-model {
+  cursor: pointer;
+  padding: 2px 10px;
+  border-radius: 4px;
+  background: #1a1a2e;
+  color: var(--blue);
+  font-weight: 500;
+  user-select: none;
+}
+.top-model:hover { background: #16213e; }
+
+.llm-panel {
+  margin: 0 14px;
+  padding: 12px 16px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+}
+
+.llm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.llm-row:last-child { margin-bottom: 0; }
+.llm-row label { color: var(--text2); min-width: 36px; }
+
+.llm-msg { margin-top: 8px; font-size: 12px; }
+.llm-msg.ok { color: var(--green); }
+.llm-msg.err { color: var(--red); }

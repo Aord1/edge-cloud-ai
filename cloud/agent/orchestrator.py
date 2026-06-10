@@ -1,14 +1,18 @@
-"""Agent 编排器 — LangGraph ReAct Agent，支持流式输出。"""
+"""Agent 编排器 — LangGraph ReAct Agent，支持流式输出（多模态：文本+图片）。"""
 
 from __future__ import annotations
 
+import base64
 from collections.abc import AsyncIterator
+from pathlib import Path
 
+from langchain_core.messages import HumanMessage
 from langgraph.prebuilt import create_react_agent
 
 from .models import create_llm
 from .prompts import SYSTEM_PROMPT
 from .toolkit.registry import AGENT_TOOLS
+from .llm_config import llm_runtime
 
 
 class DefectAgent:
@@ -22,12 +26,57 @@ class DefectAgent:
             prompt=SYSTEM_PROMPT,
         )
 
+    def reconfigure(self) -> None:
+        """根据最新运行时配置重建 Agent 图（热切换模型）。"""
+        self._llm = create_llm()
+        self._graph = create_react_agent(
+            model=self._llm,
+            tools=AGENT_TOOLS,
+            prompt=SYSTEM_PROMPT,
+        )
+        print(f"[Agent] 已切换模型: {llm_runtime.model}")
+
     async def stream(
         self, message: str, thread_id: str = "default"
     ) -> AsyncIterator[dict]:
-        """流式执行 Agent，yield 每一步的事件。"""
+        """流式执行 Agent（纯文本），yield 每一步的事件。"""
+        async for event in self._stream_events(
+            {"messages": [("user", message)]}, thread_id
+        ):
+            yield event
+
+    async def stream_with_image(
+        self,
+        text: str,
+        image_path: str = "",
+        image_b64: str = "",
+        thread_id: str = "default",
+    ) -> AsyncIterator[dict]:
+        """流式执行 Agent（多模态：文本 + 图片），yield 每一步的事件。"""
+        content: list[dict] = [{"type": "text", "text": text}]
+
+        if image_path:
+            raw = Path(image_path).read_bytes()
+            image_b64 = base64.b64encode(raw).decode()
+
+        if image_b64:
+            content.append({
+                "type": "image_url",
+                "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+            })
+
+        message = HumanMessage(content=content)
+        async for event in self._stream_events(
+            {"messages": [message]}, thread_id
+        ):
+            yield event
+
+    async def _stream_events(
+        self, input_data: dict, thread_id: str
+    ) -> AsyncIterator[dict]:
+        """内部流式执行，解析事件并 yield。"""
         async for event in self._graph.astream_events(
-            {"messages": [("user", message)]},
+            input_data,
             config={"configurable": {"thread_id": thread_id}},
             version="v2",
         ):

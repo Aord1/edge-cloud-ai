@@ -3,11 +3,46 @@
     <header class="top-bar">
       <h1>边云协同检测</h1>
       <div class="top-status">
+        <span class="top-model" @click="showLlmSettings = !showLlmSettings" title="切换模型">
+          🤖 {{ llmModel }}
+        </span>
         <span><span class="dot" :class="edgeOk ? 'on' : 'off'"></span>边缘端</span>
         <span><span class="dot" :class="cloudOk ? 'on' : 'off'"></span>云端</span>
         <span v-if="fps > 0">{{ fps }}fps</span>
       </div>
     </header>
+
+    <!-- LLM 切换面板 -->
+    <div v-if="showLlmSettings" class="llm-panel">
+      <div class="llm-row">
+        <label>模型</label>
+        <select v-model="llmForm.model" class="small-select">
+          <option value="gpt-4o">GPT-4o (OpenAI)</option>
+          <option value="gpt-4o-mini">GPT-4o-mini (OpenAI)</option>
+          <option value="deepseek-chat">DeepSeek V3</option>
+          <option value="deepseek-reasoner">DeepSeek R1</option>
+          <option value="qwen-plus">通义千问 Plus</option>
+          <option value="qwen-max">通义千问 Max</option>
+          <option value="moonshot-v1-8k">Moonshot (Kimi)</option>
+          <option value="__custom__">自定义...</option>
+        </select>
+        <input v-if="llmForm.model === '__custom__'" v-model="llmForm.customModel" class="small-input" placeholder="模型名称" style="width:160px" />
+      </div>
+      <div class="llm-row">
+        <label>地址</label>
+        <input v-model="llmForm.baseUrl" class="small-input" placeholder="留空=OpenAI 官方" style="flex:1" />
+      </div>
+      <div class="llm-row">
+        <label>密钥</label>
+        <input v-model="llmForm.apiKey" class="small-input" type="password" placeholder="sk-..." style="flex:1" />
+      </div>
+      <div class="llm-row">
+        <label>温度</label>
+        <input v-model.number="llmForm.temperature" class="small-input" type="number" step="0.1" min="0" max="2" style="width:70px" />
+        <button class="btn-start" @click="doSwitchLlm" style="margin-left:auto">切换</button>
+      </div>
+      <div v-if="llmMsg" class="llm-msg" :class="llmOk ? 'ok' : 'err'">{{ llmMsg }}</div>
+    </div>
 
     <div class="monitor-body">
       <!-- 左：控制 + 视频 -->
@@ -133,7 +168,15 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   edgeConfigure, edgeStart, edgeStop, edgeStatus, edgeStreamUrl, edgeSummary,
   edgeListFiles, edgeListCameras, edgeUploadFile, fetchDefects,
+  fetchLlmConfig, updateLlmConfig,
 } from '../api/client.js'
+
+// ── LLM 切换 ──
+const showLlmSettings = ref(false)
+const llmModel = ref('gpt-4o')
+const llmForm = ref({ model: 'gpt-4o', customModel: '', baseUrl: '', apiKey: '', temperature: 0.3 })
+const llmMsg = ref('')
+const llmOk = ref(true)
 
 // ── 源选择 ──
 const sourceType = ref('camera')
@@ -177,7 +220,55 @@ const reviewingCount = computed(() => records.value.filter(r => r.decision === '
 // ── 初始化 ──
 onMounted(async () => {
   try { const r = await edgeListCameras(); cameras.value = r.cameras.length ? r.cameras : [0] } catch {}
+  try { const r = await fetchLlmConfig(); applyLlmConfig(r.data) } catch {}
 })
+
+// ── LLM 预设地址 ──
+const LLM_PRESETS = {
+  'gpt-4o': 'https://api.openai.com/v1',
+  'gpt-4o-mini': 'https://api.openai.com/v1',
+  'deepseek-chat': 'https://api.deepseek.com/v1',
+  'deepseek-reasoner': 'https://api.deepseek.com/v1',
+  'qwen-plus': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'qwen-max': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'moonshot-v1-8k': 'https://api.moonshot.cn/v1',
+}
+
+function applyLlmConfig(data) {
+  llmModel.value = data.model || 'gpt-4o'
+  llmForm.value = {
+    model: Object.keys(LLM_PRESETS).includes(data.model) ? data.model : '__custom__',
+    customModel: Object.keys(LLM_PRESETS).includes(data.model) ? '' : data.model,
+    baseUrl: data.base_url || '',
+    apiKey: data.api_key || '',
+    temperature: data.temperature ?? 0.3,
+  }
+}
+
+async function doSwitchLlm() {
+  const model = llmForm.value.model === '__custom__' ? llmForm.value.customModel.trim() : llmForm.value.model
+  if (!model) { llmMsg.value = '请输入模型名称'; llmOk.value = false; return }
+
+  const baseUrl = llmForm.value.model === '__custom__'
+    ? llmForm.value.baseUrl
+    : (llmForm.value.baseUrl || LLM_PRESETS[llmForm.value.model] || '')
+
+  try {
+    const r = await updateLlmConfig({
+      model,
+      base_url: baseUrl,
+      api_key: llmForm.value.apiKey || undefined,
+      temperature: llmForm.value.temperature,
+    })
+    applyLlmConfig(r.data)
+    llmModel.value = model
+    llmMsg.value = `已切换至 ${model}`
+    llmOk.value = true
+  } catch (e) {
+    llmMsg.value = '切换失败: ' + (e.response?.data?.detail || e.message)
+    llmOk.value = false
+  }
+}
 
 // ── 文件选择 ──
 async function onFilePicked(e) {
