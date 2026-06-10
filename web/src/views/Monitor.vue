@@ -385,7 +385,13 @@ function stopPolling() {
 }
 
 // ── 格式化 ──
-function names(d) { return d?.map(x => x.class_name).join(', ') || '' }
+const CLASS_CN = {
+  crazing: '裂纹', inclusion: '夹杂', patches: '斑块',
+  pitted_surface: '麻点', rolled_in_scale: '氧化皮', scratches: '划痕',
+  'rolled-in_scale': '氧化皮',
+}
+function toCn(name) { return CLASS_CN[name] || name }
+function names(d) { return d?.map(x => toCn(x.class_name)).join(', ') || '' }
 function fmtTime(t) { return t ? new Date(t).toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '' }
 function imageUrl(id) { return `/api/v1/defects/${id}/image` }
 </script>
