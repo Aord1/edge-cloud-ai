@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +17,7 @@ from ..schemas.detection import DetectionLogOut, DetectionLogPage
 
 router = APIRouter(prefix="/api/v1", tags=["defects"])
 
-UPLOAD_DIR = __import__("pathlib").Path("uploads")
+UPLOAD_DIR = Path("uploads")
 
 
 @router.get("/defects", response_model=DetectionLogPage)
@@ -69,7 +70,6 @@ async def get_defect_image(
     try:
         uid = UUID(defect_id)
     except ValueError:
-        from fastapi.responses import JSONResponse
         return JSONResponse({"error": "invalid id"}, status_code=400)
 
     result = await db.execute(
@@ -82,5 +82,4 @@ async def get_defect_image(
         if path.exists():
             return FileResponse(path, media_type="image/jpeg")
 
-    from fastapi.responses import JSONResponse
     return JSONResponse({"error": "image not found"}, status_code=404)
