@@ -17,6 +17,7 @@ from .api.routes_defects import router as defects_router
 from .api.routes_llm import router as llm_router
 from .mqtt.handler import start_mqtt, stop_mqtt
 from .services.review import process_upload, start_review_consumer
+from .agent.llm_config import llm_runtime
 
 _bridge_task: asyncio.Task | None = None
 
@@ -42,6 +43,9 @@ async def lifespan(app: FastAPI):
     bridge_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
     start_mqtt(bridge_queue)
     _bridge_task = asyncio.create_task(_process_mqtt_bridge(bridge_queue))
+
+    if llm_runtime.api_key:
+        await start_review_consumer()
 
     yield
 

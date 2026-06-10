@@ -75,6 +75,7 @@ class DefectAgent:
         self, input_data: dict, thread_id: str
     ) -> AsyncIterator[dict]:
         """内部流式执行，解析事件并 yield。"""
+        final_content = ""
         async for event in self._graph.astream_events(
             input_data,
             config={"configurable": {"thread_id": thread_id}},
@@ -85,7 +86,16 @@ class DefectAgent:
             if kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
                 if chunk.content:
+                    final_content += chunk.content
                     yield {"type": "text", "content": chunk.content}
+
+            elif kind == "on_chat_model_end":
+                output = event["data"].get("output", None)
+                if output and hasattr(output, "content") and output.content:
+                    if isinstance(output.content, str):
+                        final_content = output.content
+                    elif isinstance(output.content, list):
+                        final_content = next((c.get("text", "") for c in output.content if c.get("type") == "text"), "")
 
             elif kind == "on_tool_start":
                 name = event["name"]
@@ -101,7 +111,9 @@ class DefectAgent:
                 output = event["data"].get("output", "")
                 yield {"type": "tool_result", "content": str(output)}
 
-        yield {"type": "done", "content": ""}
+        if final_content:
+            yield {"type": "text", "content": ""}
+        yield {"type": "done", "content": final_content}
 
 
 # 全局单例

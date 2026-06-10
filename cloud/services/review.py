@@ -123,6 +123,7 @@ async def _do_review(defect_id: uuid.UUID) -> None:
 
     full_text = []
     tool_calls = []
+    done_text = ""
     try:
         async for event in agent.stream_with_image(
             prompt, image_path=image_path or "", thread_id=str(defect_id)
@@ -134,10 +135,12 @@ async def _do_review(defect_id: uuid.UUID) -> None:
                     "tool": event.get("tool_name", ""),
                     "input": str(event.get("tool_input", "")),
                 })
+            elif event["type"] == "done":
+                done_text = event.get("content", "")
     except Exception as e:
         full_text.append(f"[Agent 调用失败: {e}]")
 
-    reasoning = "".join(full_text)
+    reasoning = "".join(full_text) or done_text or "(Agent 未返回内容)"
     now = datetime.now(timezone.utc)
 
     review = {
