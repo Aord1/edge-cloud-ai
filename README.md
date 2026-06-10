@@ -84,9 +84,10 @@ cp .env.example .env
 | 变量               | 说明                              | 默认值           |
 | ------------------ | --------------------------------- | ---------------- |
 | `DB_PASSWORD`    | 数据库密码                        | —               |
-| `LLM_API_KEY`    | 大模型 API Key（OpenAI/兼容接口） | —               |
 | `MQTT_PASSWORD`  | MQTT 密码（可选）                 | —               |
 | `JWT_SECRET_KEY` | JWT 签名密钥                      | 生产环境务必修改 |
+
+> **LLM 配置已从 `.env` 移除**，改为通过 Web 端或 API 运行时配置，API Key 仅存内存、不落盘。详见[§4 MQTT 通信架构](#4-mqtt-通信架构)后的 LLM 配置说明。
 
 ### 3. 数据库 & MQTT
 
@@ -148,6 +149,25 @@ Edge  <──subscribe── edge/{device_id}/alert <── Cloud (发布)
 - 边缘端尝试 MQTT 连接，失败后自动回退到 HTTP `POST /api/v1/detect/upload` 上传
 - 云端尝试 MQTT 连接，失败后打印警告并继续运行（仅影响 MQTT 通道，HTTP 上传仍正常）
 - Broker 恢复后客户端自动重连（5s 间隔）
+
+### 5. LLM 配置（运行时切换）
+
+LLM 不再通过 `.env` 配置，改为运行时管理，API Key **仅存内存、不落盘**。
+
+**Web 端操作**：点击顶部栏 🤖 模型名 → 选择模型 → 填入 Key → 切换，无需重启。
+
+**API 操作**：
+```bash
+# 查看当前配置（不返回 Key）
+curl http://localhost:8000/api/v1/llm/config
+
+# 切换模型
+curl -X PUT http://localhost:8000/api/v1/llm/config \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-chat","base_url":"https://api.deepseek.com/v1","api_key":"sk-xxx"}'
+```
+
+首次使用时需通过 API/Web 端配置 API Key，否则 Agent 复核功能不工作。
 
 ---
 

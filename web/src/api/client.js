@@ -20,8 +20,10 @@ export default apiClient
 
 // ── 云端 API ──
 
-export function fetchDefects(limit = 50) {
-  return apiClient.get('/api/v1/defects', { params: { limit } })
+export function fetchDefects(limit = 30, offset = 0, deviceId = null) {
+  const params = { limit, offset }
+  if (deviceId) params.device_id = deviceId
+  return apiClient.get('/api/v1/defects', { params })
 }
 
 // ── 边端 API ──
@@ -80,4 +82,10 @@ export function fetchLlmConfig() {
 
 export function updateLlmConfig(data) {
   return apiClient.put('/api/v1/llm/config', data)
+}
+
+// ── 缺陷记录操作 ──
+
+export function deleteAllDefects() {
+  return apiClient.delete('/api/v1/defects')
 }

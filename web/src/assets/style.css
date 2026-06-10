@@ -410,3 +410,73 @@ html, body, #app {
 .llm-msg { margin-top: 8px; font-size: 12px; }
 .llm-msg.ok { color: var(--green); }
 .llm-msg.err { color: var(--red); }
+
+/* ── 内联复核 ── */
+
+.review-inline {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  background: var(--bg3);
+}
+
+.review-inline .review-label { margin-right: 6px; }
+.review-inline .review-text { font-size: 12px; }
+
+/* ── 分页 ── */
+
+.btn-refresh {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text2);
+}
+.btn-refresh:hover { background: var(--bg3); }
+.btn-refresh:disabled { opacity: 0.4; cursor: default; }
+
+.btn-delete {
+  background: none;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--red);
+}
+.btn-delete:hover { background: rgba(239, 68, 68, 0.1); }
+.btn-delete:disabled { opacity: 0.3; cursor: default; }
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg2);
+  flex-shrink: 0;
+}
+
+.pagination button {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+}
+.pagination button:hover:not(:disabled):not(.active) { background: var(--border); }
+.pagination button:disabled { opacity: 0.3; cursor: default; }
+.pagination button.active {
+  background: var(--blue);
+  border-color: var(--blue);
+  color: #fff;
+}
+.page-ellipsis {
+  background: none !important;
+  border: none !important;
+  cursor: default !important;
+}

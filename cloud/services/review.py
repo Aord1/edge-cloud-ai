@@ -13,6 +13,7 @@ from sqlalchemy import select
 from ..config import settings
 from ..db.models import DefectReview, DetectionLog
 from ..db.session import AsyncSessionLocal
+from ..agent.llm_config import llm_runtime
 
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -80,10 +81,13 @@ async def _review_consumer() -> None:
     while True:
         defect_id = await _review_queue.get()
         _queued_ids.discard(defect_id)
-        try:
-            await _do_review(defect_id)
-        except Exception as e:
-            print(f"[ReviewQueue] 复核失败 {defect_id}: {e}")
+        if not llm_runtime.api_key:
+            print("[ReviewQueue] LLM 未配置，跳过复核")
+        else:
+            try:
+                await _do_review(defect_id)
+            except Exception as e:
+                print(f"[ReviewQueue] 复核失败 {defect_id}: {e}")
         _review_queue.task_done()
         await asyncio.sleep(settings.review_consumer_interval)
 
@@ -153,7 +157,7 @@ async def _do_review(defect_id: uuid.UUID) -> None:
                 verdict="",
                 reasoning_chain={"steps": tool_calls} if tool_calls else {},
                 tool_calls=[{"tool": t["tool"], "input": t["input"]} for t in tool_calls],
-                reviewed_by=settings.llm_model,
+                reviewed_by=llm_runtime.model,
                 reviewed_at=now,
             )
             session.add(defect_review)

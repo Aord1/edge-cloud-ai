@@ -8,10 +8,13 @@ from ..llm_config import llm_runtime
 
 
 def create_llm() -> ChatOpenAI:
-    """根据运行时配置创建 ChatOpenAI 实例。"""
+    """根据运行时配置创建 ChatOpenAI 实例。
+
+    API Key 未配置时使用占位符，调用 LLM 时会报明确错误。
+    """
     kwargs: dict = {
         "model": llm_runtime.model,
-        "api_key": llm_runtime.api_key,
+        "api_key": llm_runtime.api_key or "sk-not-configured",
         "temperature": llm_runtime.temperature,
         "streaming": True,
     }

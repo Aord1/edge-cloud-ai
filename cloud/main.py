@@ -39,8 +39,6 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    await start_review_consumer()
-
     bridge_queue: asyncio.Queue = asyncio.Queue(maxsize=200)
     start_mqtt(bridge_queue)
     _bridge_task = asyncio.create_task(_process_mqtt_bridge(bridge_queue))

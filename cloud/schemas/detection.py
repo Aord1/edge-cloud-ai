@@ -10,9 +10,9 @@ from pydantic import ConfigDict, BaseModel, Field
 
 class DetectionItem(BaseModel):
     class_name: str
-    class_id: int
+    class_id: int = -1
     confidence: float
-    bbox: list[int]  # [x1, y1, x2, y2]
+    bbox: list[int | float] = []  # [x1, y1, x2, y2]
 
 
 class DetectionUploadRequest(BaseModel):
@@ -55,3 +55,8 @@ class DetectionLogOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DetectionLogPage(BaseModel):
+    total: int
+    items: list[DetectionLogOut]

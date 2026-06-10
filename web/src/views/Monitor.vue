@@ -48,7 +48,6 @@
       <!-- 左：控制 + 视频 -->
       <section class="stream-section">
         <div class="control-panel">
-          <!-- 摄像头模式 -->
           <div class="control-row">
             <label class="radio-label">
               <input type="radio" value="camera" v-model="sourceType" :disabled="running" />
@@ -59,18 +58,9 @@
                 <option v-for="c in cameras" :key="c" :value="String(c)">{{ c }}</option>
                 <option value="__custom__">自定义...</option>
               </select>
-              <input
-                v-if="cameraId === '__custom__'"
-                v-model="customSource"
-                class="small-input"
-                placeholder="摄像头索引或设备路径"
-                style="width:200px"
-                :disabled="running"
-              />
+              <input v-if="cameraId === '__custom__'" v-model="customSource" class="small-input" placeholder="摄像头索引或设备路径" style="width:200px" :disabled="running" />
             </template>
           </div>
-
-          <!-- 文件模式 -->
           <div class="control-row">
             <label class="radio-label">
               <input type="radio" value="file" v-model="sourceType" :disabled="running" />
@@ -78,20 +68,13 @@
             </label>
             <template v-if="sourceType === 'file'">
               <label class="file-pick-btn" :class="{ disabled: running }">
-                <input
-                  type="file"
-                  accept="video/*,image/*"
-                  @change="onFilePicked"
-                  :disabled="running || uploading"
-                  style="display:none"
-                />
+                <input type="file" accept="video/*,image/*" @change="onFilePicked" :disabled="running || uploading" style="display:none" />
                 📁 选择文件
               </label>
               <span v-if="fileSource" class="file-name">{{ fileName }}</span>
               <span v-if="uploading" class="upload-status"><span class="spinner"></span> 上传中...</span>
             </template>
           </div>
-
           <div class="control-row">
             <label>置信度</label>
             <input v-model.number="confidence" class="small-input" type="number" step="0.05" min="0.1" max="0.9" style="width:60px" :disabled="running" />
@@ -110,20 +93,24 @@
         </div>
       </section>
 
-      <!-- 右：记录 + 复核 -->
+      <!-- 右：检测记录 + Agent 复核 -->
       <section class="feed-section">
         <div class="feed-header">
           <div class="feed-title">检测记录 &amp; Agent 复核</div>
-          <div class="feed-summary" v-if="records.length">
-            {{ records.length }} 条 &middot; 已复核 {{ reviewedCount }}
-            <span v-if="reviewingCount"> &middot; 复核中 {{ reviewingCount }}</span>
+          <div class="feed-summary">
+            共 {{ totalRecords }} 条
+            <button class="btn-refresh" @click="refreshDefects" :disabled="loading">🔄</button>
+            <button class="btn-delete" @click="doDeleteAll" :disabled="deleting || !totalRecords">
+              {{ deleting ? '删除中...' : '🗑 清空' }}
+            </button>
           </div>
         </div>
 
         <div class="feed-list" ref="feedList">
-          <div v-if="!records.length" class="feed-empty">等待检测结果...</div>
-          <div v-for="r in records" :key="r.id" class="feed-item" :class="{ expanded: expanded === r.id }">
-            <div class="defect-row" @click="r.decision === 'CLOUD' && toggleExpand(r.id)">
+          <div v-if="loading" class="feed-empty">加载中...</div>
+          <div v-else-if="!records.length" class="feed-empty">暂无检测记录</div>
+          <div v-for="r in records" :key="r.id" class="feed-item">
+            <div class="defect-row">
               <div class="defect-left">
                 <span class="defect-dot" :class="r.decision === 'CLOUD' ? 'cloud' : 'edge'"></span>
                 <span class="defect-time">{{ fmtTime(r.created_at) }}</span>
@@ -134,29 +121,29 @@
                 <span class="tag" :class="r.decision === 'CLOUD' ? 'tag-cloud' : 'tag-edge'">
                   {{ r.decision === 'CLOUD' ? '复核' : '本地' }}
                 </span>
-                <span v-if="r.decision === 'CLOUD'" class="expand-arrow">{{ expanded === r.id ? '▾' : '▸' }}</span>
               </div>
             </div>
-            <div v-if="expanded === r.id" class="review-panel">
-              <div v-if="r.agent_review" class="review-content">
-                <div class="review-label">Agent 复核</div>
-                <div class="review-text">{{ r.agent_review.reasoning }}</div>
-                <div v-if="r.agent_review.tool_calls?.length" class="review-tools">
-                  🔧 {{ r.agent_review.tool_calls.map(t => t.tool).join(', ') }}
-                </div>
+            <!-- Agent 复核结果：低置信度记录始终展示 -->
+            <div v-if="r.decision === 'CLOUD'" class="review-inline">
+              <div v-if="r.agent_review?.reasoning" class="review-content">
+                <span class="review-label">🤖 Agent:</span>
+                <span class="review-text">{{ r.agent_review.reasoning }}</span>
               </div>
               <div v-else class="review-content review-pending">
-                <span class="spinner"></span> Agent 复核中...
+                <span class="spinner"></span> 复核中...
               </div>
             </div>
           </div>
         </div>
 
-        <div v-if="!running && records.length" class="summary-bar">
-          <span>检测完成</span>
-          <span>总 {{ records.length }}</span>
-          <span>云端复核 {{ cloudCount }}</span>
-          <span>本地 {{ edgeCount }}</span>
+        <!-- 分页 -->
+        <div v-if="totalPages > 1" class="pagination">
+          <button :disabled="page <= 1" @click="goPage(page - 1)">← 上一页</button>
+          <span v-for="p in visiblePages" :key="p">
+            <button v-if="p === '...'" disabled class="page-ellipsis">...</button>
+            <button v-else :class="{ active: p === page }" @click="goPage(p)">{{ p }}</button>
+          </span>
+          <button :disabled="page >= totalPages" @click="goPage(page + 1)">下一页 →</button>
         </div>
       </section>
     </div>
@@ -168,7 +155,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   edgeConfigure, edgeStart, edgeStop, edgeStatus, edgeStreamUrl, edgeSummary,
   edgeListFiles, edgeListCameras, edgeUploadFile, fetchDefects,
-  fetchLlmConfig, updateLlmConfig,
+  fetchLlmConfig, updateLlmConfig, deleteAllDefects,
 } from '../api/client.js'
 
 // ── LLM 切换 ──
@@ -207,20 +194,25 @@ const edgeOk = ref(false)
 const cloudOk = ref(false)
 const fps = ref(0)
 const records = ref([])
-const expanded = ref(null)
+const totalRecords = ref(0)
+const loading = ref(false)
+const deleting = ref(false)
+const page = ref(1)
+const pageSize = 30
 let edgePoll = null
-let cloudPoll = null
-let edgeRecordPoll = null
+let autoRefresh = null
 
-const cloudCount = computed(() => records.value.filter(r => r.decision === 'CLOUD').length)
-const edgeCount = computed(() => records.value.filter(r => r.decision === 'EDGE').length)
-const reviewedCount = computed(() => records.value.filter(r => r.agent_review).length)
-const reviewingCount = computed(() => records.value.filter(r => r.decision === 'CLOUD' && !r.agent_review).length)
+const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / pageSize)))
 
-// ── 初始化 ──
-onMounted(async () => {
-  try { const r = await edgeListCameras(); cameras.value = r.cameras.length ? r.cameras : [0] } catch {}
-  try { const r = await fetchLlmConfig(); applyLlmConfig(r.data) } catch {}
+const visiblePages = computed(() => {
+  const tp = totalPages.value
+  const p = page.value
+  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
+  const pages = []
+  if (p > 3) pages.push(1, '...')
+  for (let i = Math.max(2, p - 1); i <= Math.min(tp - 1, p + 1); i++) pages.push(i)
+  if (p < tp - 2) pages.push('...', tp)
+  return pages
 })
 
 // ── LLM 预设地址 ──
@@ -240,7 +232,7 @@ function applyLlmConfig(data) {
     model: Object.keys(LLM_PRESETS).includes(data.model) ? data.model : '__custom__',
     customModel: Object.keys(LLM_PRESETS).includes(data.model) ? '' : data.model,
     baseUrl: data.base_url || '',
-    apiKey: data.api_key || '',
+    apiKey: data.api_key_set ? '****' : '',
     temperature: data.temperature ?? 0.3,
   }
 }
@@ -248,11 +240,9 @@ function applyLlmConfig(data) {
 async function doSwitchLlm() {
   const model = llmForm.value.model === '__custom__' ? llmForm.value.customModel.trim() : llmForm.value.model
   if (!model) { llmMsg.value = '请输入模型名称'; llmOk.value = false; return }
-
   const baseUrl = llmForm.value.model === '__custom__'
     ? llmForm.value.baseUrl
     : (llmForm.value.baseUrl || LLM_PRESETS[llmForm.value.model] || '')
-
   try {
     const r = await updateLlmConfig({
       model,
@@ -270,6 +260,50 @@ async function doSwitchLlm() {
   }
 }
 
+// ── 初始化 ──
+onMounted(async () => {
+  try { const r = await edgeListCameras(); cameras.value = r.cameras.length ? r.cameras : [0] } catch {}
+  try { const r = await fetchLlmConfig(); applyLlmConfig(r.data) } catch {}
+  await refreshDefects()
+})
+
+onUnmounted(() => {
+  clearInterval(edgePoll)
+  clearInterval(autoRefresh)
+})
+
+// ── 分页 ──
+function goPage(p) {
+  if (p < 1 || p > totalPages.value) return
+  page.value = p
+  refreshDefects()
+}
+
+async function refreshDefects() {
+  loading.value = true
+  try {
+    const res = await fetchDefects(pageSize, (page.value - 1) * pageSize)
+    cloudOk.value = true
+    totalRecords.value = res.data.total
+    records.value = res.data.items
+  } catch { cloudOk.value = false }
+  loading.value = false
+}
+
+async function doDeleteAll() {
+  if (!confirm('确认删除所有检测记录？此操作不可撤销。')) return
+  deleting.value = true
+  try {
+    await deleteAllDefects()
+    totalRecords.value = 0
+    records.value = []
+    page.value = 1
+  } catch (e) {
+    alert('删除失败: ' + (e.response?.data?.detail || e.message))
+  }
+  deleting.value = false
+}
+
 // ── 文件选择 ──
 async function onFilePicked(e) {
   const file = e.target.files?.[0]
@@ -279,27 +313,18 @@ async function onFilePicked(e) {
   fileSource.value = ''
   try {
     const r = await edgeUploadFile(file)
-    if (r.ok) {
-      fileSource.value = r.path
-      fileName.value = `${r.name} (${r.size_mb}MB)`
-    } else {
-      fileName.value = '上传失败: ' + r.error
-    }
-  } catch (err) {
-    fileName.value = '上传失败'
-  }
+    if (r.ok) { fileSource.value = r.path; fileName.value = `${r.name} (${r.size_mb}MB)` }
+    else fileName.value = '上传失败: ' + r.error
+  } catch { fileName.value = '上传失败' }
   uploading.value = false
 }
 
 // ── 操作 ──
 async function doStart() {
   starting.value = true
-  let src
-  if (sourceType.value === 'camera') {
-    src = cameraId.value === '__custom__' ? customSource.value.trim() : cameraId.value
-  } else {
-    src = fileSource.value
-  }
+  let src = sourceType.value === 'camera'
+    ? (cameraId.value === '__custom__' ? customSource.value.trim() : cameraId.value)
+    : fileSource.value
   if (!src) { starting.value = false; return }
   error.value = ''
   try {
@@ -308,14 +333,12 @@ async function doStart() {
     if (r.ok) {
       running.value = true
       records.value = []
-      expanded.value = null
       startPolling()
     } else {
       error.value = r.error || '启动失败'
     }
-  } catch (e) {
+  } catch {
     error.value = '无法连接边缘端，请确认 python -m edge.main --server 已启动'
-    console.error(e)
   }
   starting.value = false
 }
@@ -326,17 +349,9 @@ async function doStop() {
   running.value = false
   stopping.value = false
   stopPolling()
-  setTimeout(async () => {
-    await refreshEdgeRecords()
-    await refreshDefects()
-  }, 1500)
 }
 
-function toggleExpand(id) {
-  expanded.value = expanded.value === id ? null : id
-}
-
-// ── 轮询 ──
+// ── 轮询（仅状态） ──
 function startPolling() {
   edgePoll = setInterval(async () => {
     try {
@@ -346,61 +361,19 @@ function startPolling() {
       if ((s.state === 'stopped' || s.state === 'stopping') && running.value) {
         running.value = false
         stopPolling()
-        await refreshEdgeRecords()
-        await refreshDefects()
-        mergeAllRecords()
       }
     } catch { edgeOk.value = false }
   }, 1000)
-  cloudPoll = setInterval(refreshDefects, 2000)
-  edgeRecordPoll = setInterval(refreshEdgeRecords, 3000)
+  autoRefresh = setInterval(refreshDefects, 5000)
 }
 
 function stopPolling() {
   clearInterval(edgePoll)
-  clearInterval(cloudPoll)
-  clearInterval(edgeRecordPoll)
-}
-
-const _cloudList = ref([])
-const _edgeList = ref([])
-
-async function refreshDefects() {
-  try {
-    const res = await fetchDefects(50)
-    cloudOk.value = true
-    _cloudList.value = res.data.map(r => ({ ...r, decision: r.decision || 'CLOUD' }))
-  } catch { cloudOk.value = false }
-  mergeAllRecords()
-}
-
-async function refreshEdgeRecords() {
-  try {
-    const r = await edgeSummary()
-    _edgeList.value = (r.records || []).map((item, i) => ({
-      id: `edge_${i}`,
-      device_id: '',
-      reason: item.reason || '',
-      detections: (item.defect_types || []).map(t => ({ class_name: t })),
-      avg_confidence: item.avg_confidence ?? 0,
-      inference_ms: 0,
-      agent_review: null,
-      decision: item.decision || 'EDGE',
-      created_at: item.time ? `2000-01-01T${item.time}` : new Date().toISOString(),
-    }))
-  } catch {}
-  mergeAllRecords()
-}
-
-function mergeAllRecords() {
-  const merged = [..._edgeList.value, ..._cloudList.value]
-  merged.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-  records.value = merged
+  clearInterval(autoRefresh)
+  setTimeout(refreshDefects, 2000)
 }
 
 // ── 格式化 ──
 function names(d) { return d?.map(x => x.class_name).join(', ') || '' }
 function fmtTime(t) { return t ? new Date(t).toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '' }
-
-onUnmounted(stopPolling)
 </script>

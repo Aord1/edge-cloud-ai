@@ -28,12 +28,6 @@ class CloudSettings(BaseSettings):
     db_pool_recycle: int = 3600      # 连接回收时间（秒）
     db_pool_timeout: int = 30        # 获取连接超时（秒）
 
-    # ── LLM ──
-    llm_api_key: str = ""
-    llm_model: str = "gpt-4o"
-    llm_base_url: str = ""           # 空 = 默认官方地址；代理时填入
-    llm_temperature: float = 0.3
-
     # ── MQTT ──
     mqtt_broker_host: str = "localhost"
     mqtt_broker_port: int = 1883

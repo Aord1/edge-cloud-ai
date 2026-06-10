@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from ..agent.llm_config import llm_runtime
 from ..agent.orchestrator import agent
+from ..services.review import start_review_consumer
 
 router = APIRouter(prefix="/api/v1", tags=["llm"])
 
@@ -15,7 +16,7 @@ class LLMConfigResponse(BaseModel):
     model: str
     base_url: str
     temperature: float
-    api_key: str
+    api_key_set: bool
 
 
 class LLMConfigUpdate(BaseModel):
@@ -42,5 +43,6 @@ async def update_llm_config(body: LLMConfigUpdate) -> LLMConfigResponse:
         temperature=body.temperature,
     )
     agent.reconfigure()
+    await start_review_consumer()
     cfg = llm_runtime.as_dict()
     return LLMConfigResponse(**cfg)
