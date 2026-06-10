@@ -111,6 +111,13 @@
           <div v-else-if="!records.length" class="feed-empty">暂无检测记录</div>
           <div v-for="r in records" :key="r.id" class="feed-item">
             <div class="defect-row">
+              <img
+                v-if="r.image_path"
+                :src="imageUrl(r.id)"
+                class="defect-thumb"
+                @click.stop="showImage = showImage === r.id ? null : r.id"
+                title="点击查看大图"
+              />
               <div class="defect-left">
                 <span class="defect-dot" :class="r.decision === 'CLOUD' ? 'cloud' : 'edge'"></span>
                 <span class="defect-time">{{ fmtTime(r.created_at) }}</span>
@@ -122,6 +129,10 @@
                   {{ r.decision === 'CLOUD' ? '复核' : '本地' }}
                 </span>
               </div>
+            </div>
+            <!-- 大图预览 -->
+            <div v-if="showImage === r.id" class="image-preview" @click="showImage = null">
+              <img :src="imageUrl(r.id)" />
             </div>
             <!-- Agent 复核结果：低置信度记录始终展示 -->
             <div v-if="r.decision === 'CLOUD'" class="review-inline">
@@ -197,10 +208,11 @@ const records = ref([])
 const totalRecords = ref(0)
 const loading = ref(false)
 const deleting = ref(false)
+const showImage = ref(null)
 const page = ref(1)
 const pageSize = 30
 let edgePoll = null
-let autoRefresh = null
+let cloudPoll = null
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / pageSize)))
 
@@ -265,12 +277,15 @@ onMounted(async () => {
   try { const r = await edgeListCameras(); cameras.value = r.cameras.length ? r.cameras : [0] } catch {}
   try { const r = await fetchLlmConfig(); applyLlmConfig(r.data) } catch {}
   await refreshDefects()
+  cloudPoll = setInterval(refreshDefects, 3000)  // 始终 3s 轮询记录
 })
 
 onUnmounted(() => {
   clearInterval(edgePoll)
-  clearInterval(autoRefresh)
+  clearInterval(cloudPoll)
 })
+
+let cloudPoll = null
 
 // ── 分页 ──
 function goPage(p) {
@@ -364,16 +379,15 @@ function startPolling() {
       }
     } catch { edgeOk.value = false }
   }, 1000)
-  autoRefresh = setInterval(refreshDefects, 5000)
 }
 
 function stopPolling() {
   clearInterval(edgePoll)
-  clearInterval(autoRefresh)
   setTimeout(refreshDefects, 2000)
 }
 
 // ── 格式化 ──
 function names(d) { return d?.map(x => x.class_name).join(', ') || '' }
 function fmtTime(t) { return t ? new Date(t).toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '' }
+function imageUrl(id) { return `/api/v1/defects/${id}/image` }
 </script>

@@ -393,9 +393,12 @@ class EdgeServer:
                     if alert:
                         self._edge_count += 1
 
-                # 上传云端（经 tracker 去重：同一缺陷只上传一次）
-                if decision.action == Action.CLOUD:
-                    new_defects = self._tracker.update(decision.upload)
+                # 上传云端（全量上传，经 tracker 去重）
+                dets_to_upload = decision.upload if decision.action == Action.CLOUD else decision.local
+                dec_str = "CLOUD" if decision.action == Action.CLOUD else "EDGE"
+
+                if dets_to_upload:
+                    new_defects = self._tracker.update(dets_to_upload)
                     if new_defects:
                         _, jpg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, edge_settings.upload_jpeg_quality])
                         jpg_bytes = bytes(jpg)
@@ -405,12 +408,13 @@ class EdgeServer:
                             ok = self._mqtt.publish_defect(
                                 new_defects, decision.reason,
                                 result.avg_confidence, result.inference_ms, result.timestamp,
-                                frame_jpg=jpg_bytes,
+                                frame_jpg=jpg_bytes, decision=dec_str,
                             )
                             if ok:
-                                self._cloud_count += 1
+                                self._cloud_count += 1 if dec_str == "CLOUD" else 0
+                                self._edge_count += 1 if dec_str == "EDGE" else 0
                                 names = ", ".join(d["class_name"] for d in new_defects)
-                                print(f"  [MQTT上传] {names} ({len(new_defects)}/{len(decision.upload)}个新缺陷)")
+                                print(f"  [MQTT上传] [{dec_str}] {names} ({len(new_defects)}个新缺陷)")
                             else:
                                 print(f"  [MQTT上传失败]")
                         else:
@@ -419,12 +423,13 @@ class EdgeServer:
                                     self._api_url, self._device_id,
                                     new_defects, decision.reason,
                                     result.avg_confidence, result.inference_ms, result.timestamp,
-                                    frame_jpg=jpg_bytes,
+                                    frame_jpg=jpg_bytes, decision=dec_str,
                                 )
                                 cloud_id = r.get("id", "")
-                                self._cloud_count += 1
+                                self._cloud_count += 1 if dec_str == "CLOUD" else 0
+                                self._edge_count += 1 if dec_str == "EDGE" else 0
                                 names = ", ".join(d["class_name"] for d in new_defects)
-                                print(f"  [HTTP上传] {names} ({len(new_defects)}/{len(decision.upload)}个新缺陷) → {r.get('message', 'ok')}")
+                                print(f"  [HTTP上传] [{dec_str}] {names} ({len(new_defects)}个新缺陷) → {r.get('message', 'ok')}")
                             except Exception as e:
                                 cloud_id = ""
                                 print(f"  [上传失败] {e}")
@@ -436,20 +441,10 @@ class EdgeServer:
                             "defect_types": [d.class_name for d in result.detections],
                             "avg_confidence": round(result.avg_confidence, 3),
                             "reason": decision.reason,
-                            "decision": "CLOUD",
+                            "decision": dec_str,
                             "cloud_id": cloud_id,
                             "count": result.count,
                         })
-                elif result.count:
-                    self._records.append({
-                        "time": time.strftime("%H:%M:%S"),
-                        "defect_types": [d.class_name for d in result.detections],
-                        "avg_confidence": round(result.avg_confidence, 3),
-                        "reason": decision.reason,
-                        "decision": "EDGE",
-                        "cloud_id": "",
-                        "count": result.count,
-                    })
 
                 # 生成 MJPEG 帧（960px 宽）
                 h, w = frame.shape[:2]

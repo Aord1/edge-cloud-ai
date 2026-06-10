@@ -69,6 +69,7 @@ class EdgeMQTTClient:
         inference_ms: float,
         timestamp: float,
         frame_jpg: bytes | None = None,
+        decision: str = "CLOUD",
     ) -> bool:
         if not self._connected:
             return False
@@ -80,6 +81,7 @@ class EdgeMQTTClient:
         payload = {
             "device_id": self._device_id,
             "reason": reason,
+            "decision": decision,
             "detections": detections,
             "avg_confidence": avg_confidence,
             "inference_ms": inference_ms,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import shutil
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,3 +58,29 @@ async def delete_all_defects(
         UPLOAD_DIR.mkdir()
 
     return {"ok": True, "message": "所有检测记录已清除"}
+
+
+@router.get("/defects/{defect_id}/image")
+async def get_defect_image(
+    defect_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    from uuid import UUID
+    try:
+        uid = UUID(defect_id)
+    except ValueError:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "invalid id"}, status_code=400)
+
+    result = await db.execute(
+        select(DetectionLog.image_path).where(DetectionLog.id == uid)
+    )
+    image_path = result.scalar_one_or_none()
+
+    if image_path:
+        path = Path(image_path)
+        if path.exists():
+            return FileResponse(path, media_type="image/jpeg")
+
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"error": "image not found"}, status_code=404)

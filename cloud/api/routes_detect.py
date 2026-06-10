@@ -25,6 +25,7 @@ async def upload_detection(
     avg_confidence: float = Form(...),
     inference_ms: float = Form(...),
     timestamp: float = Form(...),
+    decision: str = Form(default="CLOUD"),
     image: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
 ) -> DetectionUploadResponse:
@@ -41,6 +42,7 @@ async def upload_detection(
         avg_confidence=avg_confidence,
         inference_ms=inference_ms,
         image_b64=image_b64,
+        decision=decision,
     )
 
     return DetectionUploadResponse(

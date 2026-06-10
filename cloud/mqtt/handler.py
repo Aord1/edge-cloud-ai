@@ -109,6 +109,7 @@ def _on_message(client, userdata, msg):
     avg_confidence = float(payload.get("avg_confidence", 0))
     inference_ms = float(payload.get("inference_ms", 0))
     image_b64 = payload.get("image", "")
+    decision = payload.get("decision", "CLOUD")
 
     print(f"[MQTT] ← {device_id} {len(detections)} 条缺陷")
 
@@ -121,6 +122,7 @@ def _on_message(client, userdata, msg):
                 "avg_confidence": avg_confidence,
                 "inference_ms": inference_ms,
                 "image_b64": image_b64,
+                "decision": decision,
             })
         except asyncio.QueueFull:
             print("[MQTT] 桥接队列满，丢弃消息")

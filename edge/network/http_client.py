@@ -12,12 +12,13 @@ from ..config import edge_settings
 def build_payload(
     device_id: str, detections: list[dict], reason: str,
     avg_confidence: float, inference_ms: float, timestamp: float,
-    frame_jpg: bytes | None,
+    frame_jpg: bytes | None, decision: str = "CLOUD",
 ) -> tuple[dict, dict]:
     dets_json = json.dumps([{**d, "bbox": list(d["bbox"])} for d in detections])
     data = {
         "device_id": device_id,
         "reason": reason,
+        "decision": decision,
         "detections": dets_json,
         "avg_confidence": str(avg_confidence),
         "inference_ms": str(inference_ms),
@@ -32,11 +33,11 @@ def build_payload(
 async def upload(
     api_url: str, device_id: str, detections: list[dict], reason: str,
     avg_confidence: float, inference_ms: float, timestamp: float,
-    frame_jpg: bytes | None = None,
+    frame_jpg: bytes | None = None, decision: str = "CLOUD",
 ) -> dict:
     """异步上传检测结果。"""
     data, files = build_payload(
-        device_id, detections, reason, avg_confidence, inference_ms, timestamp, frame_jpg,
+        device_id, detections, reason, avg_confidence, inference_ms, timestamp, frame_jpg, decision,
     )
     async with httpx.AsyncClient(timeout=edge_settings.upload_http_timeout) as client:
         resp = await client.post(f"{api_url}/detect/upload", data=data, files=files)
@@ -47,11 +48,11 @@ async def upload(
 def upload_sync(
     api_url: str, device_id: str, detections: list[dict], reason: str,
     avg_confidence: float, inference_ms: float, timestamp: float,
-    frame_jpg: bytes | None = None,
+    frame_jpg: bytes | None = None, decision: str = "CLOUD",
 ) -> dict:
     """同步上传（避免 asyncio，适合边缘端主循环）。"""
     data, files = build_payload(
-        device_id, detections, reason, avg_confidence, inference_ms, timestamp, frame_jpg,
+        device_id, detections, reason, avg_confidence, inference_ms, timestamp, frame_jpg, decision,
     )
     resp = httpx.post(f"{api_url}/detect/upload", data=data, files=files, timeout=edge_settings.upload_http_timeout)
     resp.raise_for_status()

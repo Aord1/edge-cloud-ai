@@ -47,6 +47,7 @@ async def process_upload(
     avg_confidence: float,
     inference_ms: float,
     image_b64: str = "",
+    decision: str = "CLOUD",
 ) -> DetectionLog:
     image_path = None
     if image_b64:
@@ -62,6 +63,7 @@ async def process_upload(
     log = DetectionLog(
         device_id=device_id,
         reason=reason,
+        decision=decision,
         detections=detections,
         image_path=image_path,
         avg_confidence=avg_confidence,
@@ -72,7 +74,8 @@ async def process_upload(
         session.add(log)
         await session.commit()
 
-    enqueue_review(log.id)
+    if decision == "CLOUD":
+        enqueue_review(log.id)
     return log
 
 
