@@ -161,7 +161,10 @@
             <!-- Agent 复核结果 -->
             <div v-if="r.decision === 'CLOUD'" class="review-inline">
               <div v-if="r.agent_review?.reasoning" class="review-content">
-                <div class="review-eval" :class="r.agent_review.evaluation === 'NG' ? 'ng' : 'ok'">
+                <div v-if="r.agent_review.reasoning.startsWith('[')" class="review-eval err">
+                  {{ reviewEvalLabel(r) }}
+                </div>
+                <div v-else class="review-eval" :class="r.agent_review.evaluation === 'NG' ? 'ng' : 'ok'">
                   {{ r.agent_review.evaluation || '复核完成' }}
                 </div>
                 <div class="review-text">{{ r.agent_review.reasoning }}</div>
@@ -454,5 +457,12 @@ function reviewIcon(r) {
 function reviewTitle(r) {
   if (r.agent_review?.reasoning) return '复核完成'
   return '等待 Agent 复核'
+}
+function reviewEvalLabel(r) {
+  const text = r.agent_review?.reasoning || ''
+  if (text.includes('未配置')) return '未配置'
+  if (text.includes('调用失败')) return '调用失败'
+  if (text.includes('无输出')) return '无输出'
+  return '异常'
 }
 </script>

@@ -86,13 +86,43 @@ async def _review_consumer() -> None:
         _queued_ids.discard(defect_id)
         if not llm_runtime.api_key:
             print("[ReviewQueue] LLM 未配置，跳过复核")
+            await _write_review(defect_id, reasoning="[未配置 API Key] 请在界面右上角 🤖 配置 LLM 密钥后再试。")
         else:
             try:
                 await _do_review(defect_id)
             except Exception as e:
                 print(f"[ReviewQueue] 复核失败 {defect_id}: {e}")
+                import traceback; traceback.print_exc()
+                await _write_review(defect_id, reasoning=f"[Agent 调用失败] {e}")
         _review_queue.task_done()
         await asyncio.sleep(settings.review_consumer_interval)
+
+
+async def _write_review(defect_id: uuid.UUID, reasoning: str) -> None:
+    now = datetime.now(timezone.utc)
+    review = {
+        "verdict": "",
+        "reasoning": reasoning,
+        "tool_calls": [],
+        "reviewed_at": now.isoformat(),
+    }
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(DetectionLog).where(DetectionLog.id == defect_id)
+        )
+        log_entry = result.scalar_one_or_none()
+        if log_entry:
+            log_entry.agent_review = review
+            defect_review = DefectReview(
+                defect_log_id=defect_id,
+                verdict="",
+                reasoning_chain={},
+                tool_calls=[],
+                reviewed_by=llm_runtime.model or "(未配置)",
+                reviewed_at=now,
+            )
+            session.add(defect_review)
+            await session.commit()
 
 
 async def _do_review(defect_id: uuid.UUID) -> None:
@@ -138,9 +168,11 @@ async def _do_review(defect_id: uuid.UUID) -> None:
             elif event["type"] == "done":
                 done_text = event.get("content", "")
     except Exception as e:
-        full_text.append(f"[Agent 调用失败: {e}]")
+        return await _write_review(defect_id, reasoning=f"[Agent 调用失败] {e}")
 
-    reasoning = "".join(full_text) or done_text or "(Agent 未返回内容)"
+    reasoning = "".join(full_text) or done_text
+    if not reasoning:
+        reasoning = f"[Agent 无输出] 模型 {llm_runtime.model} 未返回有效内容，请检查模型和 API Key 配置。"
     now = datetime.now(timezone.utc)
 
     review = {

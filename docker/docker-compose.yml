@@ -3,6 +3,7 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: edgecloud-db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: edgecloud
       POSTGRES_PASSWORD: 201152
@@ -20,6 +21,7 @@ services:
   mqtt:
     image: eclipse-mosquitto:2
     container_name: edgecloud-mqtt
+    restart: unless-stopped
     ports:
       - "1883:1883"
     volumes:
