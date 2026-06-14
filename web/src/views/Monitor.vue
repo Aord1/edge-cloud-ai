@@ -168,6 +168,9 @@
                   {{ r.agent_review.evaluation || '复核完成' }}
                 </div>
                 <div class="review-text">{{ r.agent_review.reasoning }}</div>
+                <div v-if="r.agent_review.reasoning.includes('未配置')" class="review-hint">
+                  💡 点击右上角 🤖 图标配置 API Key
+                </div>
               </div>
               <div v-else class="review-content review-pending">
                 <span class="spinner"></span> 等待 Agent 复核...
@@ -447,16 +450,26 @@ function names(d) { return d?.map(x => toCn(x.class_name)).join(', ') || '' }
 function fmtTime(t) { return t ? new Date(t).toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '' }
 function imageUrl(id) { return `/api/v1/defects/${id}/image` }
 function reviewStatus(r) {
-  if (r.agent_review?.reasoning) return 'done'
+  const text = r.agent_review?.reasoning || ''
+  if (text.startsWith('[')) return 'err'
+  if (text) return 'done'
   return 'pending'
 }
 function reviewIcon(r) {
-  if (r.agent_review?.reasoning) return '✓'
+  const text = r.agent_review?.reasoning || ''
+  if (text.includes('未配置')) return '⚠'
+  if (text.includes('调用失败')) return '✗'
+  if (text.includes('无输出')) return '?'
+  if (text) return '✓'
   return '⏳'
 }
 function reviewTitle(r) {
-  if (r.agent_review?.reasoning) return '复核完成'
-  return '等待 Agent 复核'
+  const text = r.agent_review?.reasoning || ''
+  if (text.includes('未配置')) return '未配置 API Key，请点击右上角🤖配置'
+  if (text.includes('调用失败')) return 'Agent 调用失败'
+  if (text.includes('无输出')) return 'Agent 未返回内容'
+  if (text) return '复核完成'
+  return '等待 Agent 复核中...'
 }
 function reviewEvalLabel(r) {
   const text = r.agent_review?.reasoning || ''
