@@ -1,4 +1,4 @@
-"""检测相关 Pydantic Schema。"""
+"""Pydantic Schema — 请求校验 & 响应序列化。"""
 
 from __future__ import annotations
 
@@ -8,11 +8,13 @@ from uuid import UUID
 from pydantic import ConfigDict, BaseModel, Field
 
 
+# ── 检测上传 ──────────────────────────────────────────────
+
 class DetectionItem(BaseModel):
     class_name: str
     class_id: int = -1
     confidence: float
-    bbox: list[int | float] = []  # [x1, y1, x2, y2]
+    bbox: list[int | float] = []
 
 
 class DetectionUploadRequest(BaseModel):
@@ -22,6 +24,8 @@ class DetectionUploadRequest(BaseModel):
     avg_confidence: float
     inference_ms: float
     timestamp: float
+    decision: str = Field(default="CLOUD", max_length=16)
+    image: str = ""
 
 
 class DetectionUploadResponse(BaseModel):
@@ -30,17 +34,7 @@ class DetectionUploadResponse(BaseModel):
     message: str = "检测数据已接收"
 
 
-class DefectReviewOut(BaseModel):
-    id: UUID
-    defect_log_id: UUID
-    verdict: str = ""
-    reasoning_chain: dict | None = None
-    tool_calls: dict | None = None
-    reviewed_by: str = ""
-    reviewed_at: datetime | None = None
-
-    model_config = ConfigDict(from_attributes=True)
-
+# ── 缺陷记录 ─────────────────────────────────────────────
 
 class DetectionLogOut(BaseModel):
     id: UUID
@@ -60,3 +54,27 @@ class DetectionLogOut(BaseModel):
 class DetectionLogPage(BaseModel):
     total: int
     items: list[DetectionLogOut]
+
+
+class DefectReviewOut(BaseModel):
+    id: UUID
+    defect_log_id: UUID
+    verdict: str = ""
+    reasoning_chain: dict | None = None
+    tool_calls: dict | None = None
+    reviewed_by: str = ""
+    reviewed_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ── 通用响应 ──────────────────────────────────────────────
+
+class DeleteResponse(BaseModel):
+    ok: bool = True
+    message: str = ""
+
+
+class ErrorResponse(BaseModel):
+    error: str
+    detail: str = ""

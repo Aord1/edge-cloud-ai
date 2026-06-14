@@ -1,19 +1,20 @@
-"""缺陷记录查询接口 — 分页查询，供 Web 端查看所有检测记录与 Agent 复核结果。"""
+"""缺陷记录查询接口 — 分页查询、删除、图片查看。"""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import get_db
 from ..config import settings
 from ..db.models import DetectionLog
-from ..schemas.detection import DetectionLogOut, DetectionLogPage
+from ..schemas.detection import DetectionLogOut, DetectionLogPage, DeleteResponse
 
 router = APIRouter(prefix="/api/v1", tags=["defects"])
 
@@ -47,10 +48,10 @@ async def list_defects(
     )
 
 
-@router.delete("/defects")
+@router.delete("/defects", response_model=DeleteResponse)
 async def delete_all_defects(
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> DeleteResponse:
     await db.execute(delete(DetectionLog))
     await db.commit()
 
@@ -58,7 +59,7 @@ async def delete_all_defects(
         shutil.rmtree(UPLOAD_DIR)
         UPLOAD_DIR.mkdir()
 
-    return {"ok": True, "message": "所有检测记录已清除"}
+    return DeleteResponse(message="所有检测记录已清除")
 
 
 @router.get("/defects/{defect_id}/image")
@@ -66,11 +67,10 @@ async def get_defect_image(
     defect_id: str,
     db: AsyncSession = Depends(get_db),
 ):
-    from uuid import UUID
     try:
         uid = UUID(defect_id)
     except ValueError:
-        return JSONResponse({"error": "invalid id"}, status_code=400)
+        raise HTTPException(status_code=400, detail="无效的记录 ID")
 
     result = await db.execute(
         select(DetectionLog.image_path).where(DetectionLog.id == uid)
@@ -82,4 +82,4 @@ async def get_defect_image(
         if path.exists():
             return FileResponse(path, media_type="image/jpeg")
 
-    return JSONResponse({"error": "image not found"}, status_code=404)
+    raise HTTPException(status_code=404, detail="图片未找到")

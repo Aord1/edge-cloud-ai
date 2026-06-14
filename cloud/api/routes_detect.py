@@ -7,11 +7,12 @@ import json
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..api.deps import get_db
-from ..schemas.detection import DetectionUploadResponse
+from ..schemas.detection import DetectionUploadResponse, DetectionItem
 from ..services.review import process_upload, start_review_consumer
 
 router = APIRouter(prefix="/api/v1", tags=["detection"])
@@ -29,7 +30,15 @@ async def upload_detection(
     image: UploadFile = File(None),
     db: AsyncSession = Depends(get_db),
 ) -> DetectionUploadResponse:
-    dets = json.loads(detections)
+    try:
+        dets_raw = json.loads(detections)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"detections JSON 解析失败: {e}")
+
+    try:
+        dets = [DetectionItem(**d) for d in dets_raw]
+    except (ValidationError, TypeError) as e:
+        raise HTTPException(status_code=400, detail=f"detections 格式校验失败: {e}")
 
     image_b64 = ""
     if image and image.filename:
@@ -38,7 +47,7 @@ async def upload_detection(
     log = await process_upload(
         device_id=device_id,
         reason=reason,
-        detections=dets,
+        detections=[d.model_dump() for d in dets],
         avg_confidence=avg_confidence,
         inference_ms=inference_ms,
         image_b64=image_b64,

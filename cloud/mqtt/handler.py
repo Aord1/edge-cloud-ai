@@ -8,8 +8,10 @@ import threading
 import time
 
 import paho.mqtt.client as mqtt
+from pydantic import ValidationError
 
 from ..config import settings
+from ..schemas.detection import DetectionUploadRequest
 from ..services.review import process_upload
 
 _mqtt_client: mqtt.Client | None = None
@@ -103,26 +105,24 @@ def _on_message(client, userdata, msg):
         print(f"[MQTT] JSON 解析失败: {e}")
         return
 
-    device_id = payload.get("device_id", "unknown")
-    reason = payload.get("reason", "mqtt")
-    detections = payload.get("detections", [])
-    avg_confidence = float(payload.get("avg_confidence", 0))
-    inference_ms = float(payload.get("inference_ms", 0))
-    image_b64 = payload.get("image", "")
-    decision = payload.get("decision", "CLOUD")
+    try:
+        data = DetectionUploadRequest(**payload)
+    except (ValidationError, TypeError) as e:
+        print(f"[MQTT] 数据校验失败: {e}")
+        return
 
-    print(f"[MQTT] ← {device_id} {len(detections)} 条缺陷")
+    print(f"[MQTT] ← {data.device_id} {len(data.detections)} 条缺陷")
 
     if _bridge_queue:
         try:
             _bridge_queue.put_nowait({
-                "device_id": device_id,
-                "reason": reason,
-                "detections": detections,
-                "avg_confidence": avg_confidence,
-                "inference_ms": inference_ms,
-                "image_b64": image_b64,
-                "decision": decision,
+                "device_id": data.device_id,
+                "reason": data.reason,
+                "detections": [d.model_dump() for d in data.detections],
+                "avg_confidence": data.avg_confidence,
+                "inference_ms": data.inference_ms,
+                "image_b64": data.image,
+                "decision": data.decision,
             })
         except asyncio.QueueFull:
             print("[MQTT] 桥接队列满，丢弃消息")
