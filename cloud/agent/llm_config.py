@@ -1,6 +1,7 @@
-"""LLM 运行时配置管理 — 支持热切换模型，重启后全部自动恢复。
+"""LLM 运行时配置管理 — 支持热切换模型。
 
-全部配置持久化到 llm_config.json（已 gitignore）
+配置持久化到 llm_config.json（已 gitignore），重启后自动恢复。
+API Key 存储在本地文件中，不会提交到版本控制。
 """
 
 from __future__ import annotations
@@ -12,7 +13,10 @@ CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "llm_config.json"
 
 
 class LLMRuntimeConfig:
-    """线程安全的运行时 LLM 配置，支持热更新与持久化。"""
+    """运行时 LLM 配置，支持热更新与持久化。
+
+    model / base_url / temperature / api_key 持久化到 llm_config.json（gitignored）。
+    """
 
     def __init__(self) -> None:
         self.model: str = "gpt-4o"
