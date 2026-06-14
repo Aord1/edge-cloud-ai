@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import threading
 import time
 from collections import deque
 
@@ -51,13 +52,20 @@ def main(argv: list[str] | None = None) -> None:
 
     # ── 服务模式：启动 HTTP 服务，等待 Web 端控制 ──
     if args.server:
+        from .server import app
+        import uvicorn
+
         server = EdgeServer(host=args.server_host, port=args.web_port)
         server.configure(
             source=args.source, conf=args.conf, conf_edge=args.conf_edge,
             api_url=args.api_url, device_id=args.device_id,
         )
         server.start()
-        print(f"[Edge] 服务模式 — Web 端访问 http://localhost:{args.web_port}")
+
+        config = uvicorn.Config(app, host=server._host, port=server._port, log_level="warning")
+        uvicorn_server = uvicorn.Server(config)
+        threading.Thread(target=uvicorn_server.run, daemon=True).start()
+        print(f"[Edge] 服务模式 — http://localhost:{args.web_port}")
         print("[Edge] 按 Ctrl+C 退出")
         try:
             while True:
