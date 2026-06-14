@@ -6,40 +6,51 @@
         <span class="top-model" @click="showLlmSettings = !showLlmSettings" title="切换模型">
           🤖 {{ llmModel }}
         </span>
-        <span><span class="dot" :class="edgeOk ? 'on' : 'off'"></span>边缘端</span>
-        <span><span class="dot" :class="cloudOk ? 'on' : 'off'"></span>云端</span>
-        <span v-if="fps > 0">{{ fps }}fps</span>
+        <span class="conn-badge" :class="edgeOk ? 'up' : 'down'">
+          <span class="dot" :class="edgeOk ? 'on' : 'off'"></span>边缘{{ edgeOk ? '' : '离线' }}
+        </span>
+        <span class="conn-badge" :class="cloudOk ? 'up' : 'down'">
+          <span class="dot" :class="cloudOk ? 'on' : 'off'"></span>云端{{ cloudOk ? '' : '离线' }}
+        </span>
+        <span v-if="fps > 0" class="fps-badge">{{ fps }}fps</span>
+        <span class="refresh-dot" title="每3秒自动刷新">◉</span>
       </div>
     </header>
 
     <!-- LLM 切换面板 -->
     <div v-if="showLlmSettings" class="llm-panel">
-      <div class="llm-row">
-        <label>模型</label>
-        <select v-model="llmForm.model" class="small-select">
-          <option value="gpt-4o">GPT-4o (OpenAI)</option>
-          <option value="gpt-4o-mini">GPT-4o-mini (OpenAI)</option>
-          <option value="deepseek-chat">DeepSeek V3</option>
-          <option value="deepseek-reasoner">DeepSeek R1</option>
-          <option value="qwen-plus">通义千问 Plus</option>
-          <option value="qwen-max">通义千问 Max</option>
-          <option value="moonshot-v1-8k">Moonshot (Kimi)</option>
-          <option value="__custom__">自定义...</option>
-        </select>
-        <input v-if="llmForm.model === '__custom__'" v-model="llmForm.customModel" class="small-input" placeholder="模型名称" style="width:160px" />
+      <div class="llm-header">
+        <span>模型设置</span>
+        <button class="llm-close" @click="showLlmSettings = false" title="关闭">✕</button>
       </div>
-      <div class="llm-row">
-        <label>地址</label>
-        <input v-model="llmForm.baseUrl" class="small-input" placeholder="留空=OpenAI 官方" style="flex:1" />
-      </div>
-      <div class="llm-row">
-        <label>密钥</label>
-        <input v-model="llmForm.apiKey" class="small-input" type="password" placeholder="sk-..." style="flex:1" />
-      </div>
-      <div class="llm-row">
-        <label>温度</label>
-        <input v-model.number="llmForm.temperature" class="small-input" type="number" step="0.1" min="0" max="2" style="width:70px" />
-        <button class="btn-start" @click="doSwitchLlm" style="margin-left:auto">切换</button>
+      <div class="llm-grid">
+        <div class="llm-row">
+          <label>模型</label>
+          <select v-model="llmForm.model" class="small-select">
+            <option value="gpt-4o">GPT-4o (OpenAI)</option>
+            <option value="gpt-4o-mini">GPT-4o-mini (OpenAI)</option>
+            <option value="deepseek-chat">DeepSeek V3</option>
+            <option value="deepseek-reasoner">DeepSeek R1</option>
+            <option value="qwen-plus">通义千问 Plus</option>
+            <option value="qwen-max">通义千问 Max</option>
+            <option value="moonshot-v1-8k">Moonshot (Kimi)</option>
+            <option value="__custom__">自定义...</option>
+          </select>
+          <input v-if="llmForm.model === '__custom__'" v-model="llmForm.customModel" class="small-input" placeholder="模型名称" style="width:140px" />
+        </div>
+        <div class="llm-row">
+          <label>地址</label>
+          <input v-model="llmForm.baseUrl" class="small-input" placeholder="留空=OpenAI 官方" style="flex:1" />
+        </div>
+        <div class="llm-row">
+          <label>密钥</label>
+          <input v-model="llmForm.apiKey" class="small-input" type="password" placeholder="sk-..." style="flex:1" />
+        </div>
+        <div class="llm-row">
+          <label>温度</label>
+          <input v-model.number="llmForm.temperature" class="small-input" type="number" step="0.1" min="0" max="2" style="width:70px" />
+          <button class="btn-start" @click="doSwitchLlm">切换</button>
+        </div>
       </div>
       <div v-if="llmMsg" class="llm-msg" :class="llmOk ? 'ok' : 'err'">{{ llmMsg }}</div>
     </div>
@@ -98,19 +109,28 @@
         <div class="feed-header">
           <div class="feed-title">检测记录 &amp; Agent 复核</div>
           <div class="feed-summary">
-            共 {{ totalRecords }} 条
-            <button class="btn-refresh" @click="refreshDefects" :disabled="loading">🔄</button>
-            <button class="btn-delete" @click="doDeleteAll" :disabled="deleting || !totalRecords">
+            <span class="summary-chip">共 {{ totalRecords }} 条</span>
+            <span class="summary-chip chip-edge">本地 {{ edgeCount }}</span>
+            <span class="summary-chip chip-cloud">复核 {{ cloudCount }}</span>
+            <button class="btn-refresh" @click="refreshDefects" :disabled="loading" title="刷新">🔄</button>
+            <button class="btn-delete" @click="doDeleteAll" :disabled="deleting || !totalRecords" title="清空所有记录">
               {{ deleting ? '删除中...' : '🗑 清空' }}
             </button>
           </div>
+          <div v-if="lastUpdated" class="feed-update">更新于 {{ fmtTime(lastUpdated) }}</div>
         </div>
 
         <div class="feed-list" ref="feedList">
-          <div v-if="loading" class="feed-empty">加载中...</div>
-          <div v-else-if="!records.length" class="feed-empty">暂无检测记录</div>
-          <div v-for="r in records" :key="r.id" class="feed-item">
-            <div class="defect-row">
+          <div v-if="loading && !records.length" class="feed-empty">
+            <span class="spinner"></span>
+            <div>加载记录中...</div>
+          </div>
+          <div v-else-if="!records.length" class="feed-empty">
+            <div class="placeholder-icon">📋</div>
+            <div>暂无检测记录</div>
+          </div>
+          <div v-for="r in records" :key="r.id" class="feed-item" :class="{ 'feed-item-cloud': r.decision === 'CLOUD' }">
+            <div class="defect-row" @click="showImage = showImage === r.id ? null : r.id">
               <img
                 v-if="r.image_path"
                 :src="imageUrl(r.id)"
@@ -119,14 +139,18 @@
                 title="点击查看大图"
               />
               <div class="defect-left">
-                <span class="defect-dot" :class="r.decision === 'CLOUD' ? 'cloud' : 'edge'"></span>
                 <span class="defect-time">{{ fmtTime(r.created_at) }}</span>
-                <span class="defect-types">{{ names(r.detections) }}</span>
-                <span class="defect-conf">{{ (r.avg_confidence * 100).toFixed(0) }}%</span>
+                <span class="defect-types" :title="names(r.detections)">{{ names(r.detections) }}</span>
+                <span class="defect-count" v-if="r.detections?.length">{{ r.detections.length }}处</span>
+                <span class="defect-reason">{{ cnReason(r.reason) }}</span>
               </div>
               <div class="defect-right">
+                <span class="defect-conf">{{ (r.avg_confidence * 100).toFixed(0) }}%</span>
                 <span class="tag" :class="r.decision === 'CLOUD' ? 'tag-cloud' : 'tag-edge'">
                   {{ r.decision === 'CLOUD' ? '复核' : '本地' }}
+                </span>
+                <span v-if="r.decision === 'CLOUD'" class="review-badge" :class="reviewStatus(r)" :title="reviewTitle(r)">
+                  {{ reviewIcon(r) }}
                 </span>
               </div>
             </div>
@@ -134,14 +158,16 @@
             <div v-if="showImage === r.id" class="image-preview" @click="showImage = null">
               <img :src="imageUrl(r.id)" />
             </div>
-            <!-- Agent 复核结果：低置信度记录始终展示 -->
+            <!-- Agent 复核结果 -->
             <div v-if="r.decision === 'CLOUD'" class="review-inline">
               <div v-if="r.agent_review?.reasoning" class="review-content">
-                <span class="review-label">🤖 Agent:</span>
-                <span class="review-text">{{ r.agent_review.reasoning }}</span>
+                <div class="review-eval" :class="r.agent_review.evaluation === 'NG' ? 'ng' : 'ok'">
+                  {{ r.agent_review.evaluation || '复核完成' }}
+                </div>
+                <div class="review-text">{{ r.agent_review.reasoning }}</div>
               </div>
               <div v-else class="review-content review-pending">
-                <span class="spinner"></span> 复核中...
+                <span class="spinner"></span> 等待 Agent 复核...
               </div>
             </div>
           </div>
@@ -149,12 +175,15 @@
 
         <!-- 分页 -->
         <div v-if="totalPages > 1" class="pagination">
-          <button :disabled="page <= 1" @click="goPage(page - 1)">← 上一页</button>
+          <span class="page-info">第 {{ page }}/{{ totalPages }} 页</span>
+          <button :disabled="page <= 1" @click="goPage(1)" title="首页">⟪</button>
+          <button :disabled="page <= 1" @click="goPage(page - 1)">←</button>
           <span v-for="p in visiblePages" :key="p">
             <button v-if="p === '...'" disabled class="page-ellipsis">...</button>
             <button v-else :class="{ active: p === page }" @click="goPage(p)">{{ p }}</button>
           </span>
-          <button :disabled="page >= totalPages" @click="goPage(page + 1)">下一页 →</button>
+          <button :disabled="page >= totalPages" @click="goPage(page + 1)">→</button>
+          <button :disabled="page >= totalPages" @click="goPage(totalPages)" title="末页">⟫</button>
         </div>
       </section>
     </div>
@@ -164,8 +193,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
-  edgeConfigure, edgeStart, edgeStop, edgeStatus, edgeStreamUrl, edgeSummary,
-  edgeListFiles, edgeListCameras, edgeUploadFile, fetchDefects,
+  edgeConfigure, edgeStart, edgeStop, edgeStatus, edgeStreamUrl,
+  edgeListCameras, edgeUploadFile, fetchDefects,
   fetchLlmConfig, updateLlmConfig, deleteAllDefects,
 } from '../api/client.js'
 
@@ -211,10 +240,13 @@ const deleting = ref(false)
 const showImage = ref(null)
 const page = ref(1)
 const pageSize = 30
+const lastUpdated = ref(null)
 let edgePoll = null
 let cloudPoll = null
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / pageSize)))
+const edgeCount = computed(() => records.value.filter(r => r.decision !== 'CLOUD').length)
+const cloudCount = computed(() => records.value.filter(r => r.decision === 'CLOUD').length)
 
 const visiblePages = computed(() => {
   const tp = totalPages.value
@@ -299,6 +331,7 @@ async function refreshDefects() {
     cloudOk.value = true
     totalRecords.value = res.data.total
     records.value = res.data.items
+    lastUpdated.value = new Date()
   } catch { cloudOk.value = false }
   loading.value = false
 }
@@ -400,8 +433,26 @@ const CLASS_CN = {
   pitted_surface: '麻点', rolled_in_scale: '氧化皮', scratches: '划痕',
   'rolled-in_scale': '氧化皮',
 }
+const REASON_CN = {
+  review: '需复核', mixed_defects: '混杂缺陷', crowded: '缺陷过多',
+  simple: '高置信本地', empty: '无缺陷', no_defect: '无效',
+  low_confidence: '低置信', severe: '严重缺陷', mqtt: 'MQTT上传',
+}
 function toCn(name) { return CLASS_CN[name] || name }
+function cnReason(r) { return REASON_CN[r] || r || '' }
 function names(d) { return d?.map(x => toCn(x.class_name)).join(', ') || '' }
 function fmtTime(t) { return t ? new Date(t).toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '' }
 function imageUrl(id) { return `/api/v1/defects/${id}/image` }
+function reviewStatus(r) {
+  if (r.agent_review?.reasoning) return 'done'
+  return 'pending'
+}
+function reviewIcon(r) {
+  if (r.agent_review?.reasoning) return '✓'
+  return '⏳'
+}
+function reviewTitle(r) {
+  if (r.agent_review?.reasoning) return '复核完成'
+  return '等待 Agent 复核'
+}
 </script>

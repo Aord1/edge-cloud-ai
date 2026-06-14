@@ -15,9 +15,10 @@ env/
 .env
 llm_config.json
 
-# ── IDE ───────────────────────────────────────────────
+# ── IDE / 工具 ──────────────────────────────────────────
 .vscode/
 .idea/
+.opencode/
 *.swp
 *.swo
 *.code-workspace

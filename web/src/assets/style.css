@@ -50,7 +50,8 @@ html, body, #app {
 
 .top-status {
   display: flex;
-  gap: 16px;
+  align-items: center;
+  gap: 12px;
   font-size: 12px;
   color: var(--text2);
 }
@@ -63,6 +64,26 @@ html, body, #app {
 }
 .dot.on  { background: var(--green); }
 .dot.off { background: var(--red); }
+
+.conn-badge { display: flex; align-items: center; }
+.conn-badge.down { color: var(--red); }
+.fps-badge {
+  background: rgba(59,130,246,0.15);
+  color: var(--blue);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-weight: 600;
+  font-size: 11px;
+}
+.refresh-dot {
+  font-size: 10px;
+  color: var(--green);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
 
 /* ── 主体两栏 ── */
 
@@ -115,8 +136,9 @@ html, body, #app {
   color: var(--text);
   font-size: 13px;
   outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
-.small-input:focus { border-color: var(--blue); }
+.small-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(59,130,246,0.15); }
 
 .small-select {
   padding: 4px 8px;
@@ -127,6 +149,7 @@ html, body, #app {
   font-size: 13px;
   outline: none;
   cursor: pointer;
+  transition: border-color 0.2s;
 }
 .small-select:focus { border-color: var(--blue); }
 .file-select { max-width: 200px; }
@@ -140,6 +163,7 @@ html, body, #app {
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 0.2s;
 }
 .file-pick-btn:hover { background: var(--bg3); }
 .file-pick-btn.disabled { opacity: 0.4; cursor: default; }
@@ -170,8 +194,10 @@ html, body, #app {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
 }
 .btn-start:hover { opacity: 0.9; }
+.btn-start:active { transform: translateY(1px); }
 .btn-start:disabled { opacity: 0.4; cursor: default; }
 
 .btn-stop {
@@ -183,8 +209,10 @@ html, body, #app {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
 }
 .btn-stop:hover { opacity: 0.9; }
+.btn-stop:active { transform: translateY(1px); }
 
 .error-bar {
   color: var(--red);
@@ -237,12 +265,32 @@ html, body, #app {
 .feed-title {
   font-size: 14px;
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .feed-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
   font-size: 11px;
   color: var(--text2);
+}
+
+.summary-chip {
+  background: var(--bg3);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.summary-chip.chip-edge { background: rgba(34,197,94,0.12); color: var(--green); }
+.summary-chip.chip-cloud { background: rgba(239,68,68,0.12); color: var(--red); }
+
+.feed-update {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text2);
+  opacity: 0.8;
 }
 
 .feed-list {
@@ -252,10 +300,15 @@ html, body, #app {
 }
 
 .feed-empty {
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
   color: var(--text2);
   padding: 48px 16px;
   font-size: 13px;
+  min-height: 200px;
 }
 
 /* 缺陷条目 */
@@ -264,7 +317,10 @@ html, body, #app {
   border-radius: 8px;
   margin-bottom: 8px;
   overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
+.feed-item:hover { border-color: var(--border); }
+.feed-item-cloud { border-left: 3px solid var(--red); }
 
 .defect-row {
   display: flex;
@@ -273,6 +329,7 @@ html, body, #app {
   padding: 10px 12px;
   cursor: pointer;
   font-size: 13px;
+  gap: 10px;
 }
 .defect-row:hover { background: rgba(255,255,255,0.03); }
 
@@ -284,17 +341,18 @@ html, body, #app {
   min-width: 0;
 }
 
-.defect-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-.defect-dot.cloud { background: var(--red); }
-.defect-dot.edge { background: var(--green); }
-
 .defect-time { color: var(--text2); font-size: 11px; flex-shrink: 0; }
 .defect-types { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.defect-conf { color: var(--blue); font-weight: 700; flex-shrink: 0; }
+.defect-count {
+  font-size: 10px;
+  color: var(--text2);
+  background: var(--bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.defect-reason { font-size: 10px; color: var(--text2); background: var(--bg3); padding: 1px 6px; border-radius: 3px; flex-shrink: 0; }
+.defect-conf { color: var(--blue); font-weight: 700; flex-shrink: 0; font-size: 13px; }
 
 .defect-right {
   display: flex;
@@ -314,33 +372,18 @@ html, body, #app {
 
 .expand-arrow { color: var(--text2); font-size: 12px; }
 
-/* Agent 复核面板 */
-.review-panel {
-  border-top: 1px solid var(--border);
-  padding: 12px;
-  background: var(--bg3);
-}
-
-.review-label {
+/* 复核状态徽章 */
+.review-badge {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--amber);
-  margin-bottom: 6px;
+  width: 20px; height: 20px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
+.review-badge.done { background: rgba(34,197,94,0.15); color: var(--green); }
+.review-badge.pending { background: rgba(234,179,8,0.15); color: var(--amber); animation: pulse 1.5s ease-in-out infinite; }
 
-.review-text {
-  font-size: 13px;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  color: var(--text);
-}
-
-.review-tools {
-  margin-top: 8px;
-  font-size: 11px;
-  color: var(--text2);
-}
-
+/* Agent 复核面板 */
 .review-pending {
   display: flex;
   align-items: center;
@@ -385,6 +428,7 @@ html, body, #app {
   color: var(--blue);
   font-weight: 500;
   user-select: none;
+  transition: background 0.2s;
 }
 .top-model:hover { background: #16213e; }
 
@@ -397,14 +441,38 @@ html, body, #app {
   border-radius: 0 0 6px 6px;
 }
 
+.llm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
+}
+
+.llm-close {
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 4px;
+}
+.llm-close:hover { color: var(--text); }
+
+.llm-grid {
+  display: grid;
+  gap: 8px;
+}
+
 .llm-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 8px;
   font-size: 12px;
 }
-.llm-row:last-child { margin-bottom: 0; }
 .llm-row label { color: var(--text2); min-width: 36px; }
 
 .llm-msg { margin-top: 8px; font-size: 12px; }
@@ -419,8 +487,19 @@ html, body, #app {
   background: var(--bg3);
 }
 
-.review-inline .review-label { margin-right: 6px; }
-.review-inline .review-text { font-size: 12px; }
+.review-inline .review-content { display: flex; flex-direction: column; gap: 6px; }
+.review-inline .review-text { font-size: 12px; line-height: 1.5; color: var(--text); white-space: pre-wrap; }
+
+.review-eval {
+  align-self: flex-start;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.review-eval.ok { background: rgba(34,197,94,0.15); color: var(--green); }
+.review-eval.ng { background: rgba(239,68,68,0.15); color: var(--red); }
 
 /* ── 分页 ── */
 
@@ -432,6 +511,7 @@ html, body, #app {
   cursor: pointer;
   font-size: 13px;
   color: var(--text2);
+  transition: background 0.2s;
 }
 .btn-refresh:hover { background: var(--bg3); }
 .btn-refresh:disabled { opacity: 0.4; cursor: default; }
@@ -444,6 +524,7 @@ html, body, #app {
   cursor: pointer;
   font-size: 12px;
   color: var(--red);
+  transition: background 0.2s;
 }
 .btn-delete:hover { background: rgba(239, 68, 68, 0.1); }
 .btn-delete:disabled { opacity: 0.3; cursor: default; }
@@ -459,6 +540,8 @@ html, body, #app {
   flex-shrink: 0;
 }
 
+.page-info { font-size: 11px; color: var(--text2); margin-right: 8px; }
+
 .pagination button {
   background: var(--bg3);
   border: 1px solid var(--border);
@@ -467,6 +550,7 @@ html, body, #app {
   cursor: pointer;
   font-size: 12px;
   color: var(--text);
+  transition: background 0.15s, border-color 0.15s;
 }
 .pagination button:hover:not(:disabled):not(.active) { background: var(--border); }
 .pagination button:disabled { opacity: 0.3; cursor: default; }
@@ -491,8 +575,9 @@ html, body, #app {
   cursor: pointer;
   flex-shrink: 0;
   border: 1px solid var(--border);
+  transition: opacity 0.2s, transform 0.15s;
 }
-.defect-thumb:hover { opacity: 0.8; }
+.defect-thumb:hover { opacity: 0.85; transform: scale(1.03); }
 
 .image-preview {
   border-top: 1px solid var(--border);
