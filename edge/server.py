@@ -48,39 +48,44 @@ from .tracking import DefectTracker
 
 class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path == "/stream":
-            self._serve_mjpeg()
-        elif self.path == "/api/status":
-            self._json(self.server._owner.get_status())
-        elif self.path == "/api/summary":
-            self._json(self.server._owner.get_summary())
-        elif self.path == "/api/files":
-            self._json(self.server._owner.list_files())
-        elif self.path == "/api/cameras":
-            self._json(self.server._owner.list_cameras())
+        routes = {
+            "/stream": self._serve_mjpeg,
+            "/api/status": lambda: self._json_with_data(self.server._owner.get_status()),
+            "/api/summary": lambda: self._json_with_data(self.server._owner.get_summary()),
+            "/api/files": lambda: self._json_with_data(self.server._owner.list_files()),
+            "/api/cameras": lambda: self._json_with_data(self.server._owner.list_cameras()),
+        }
+        handler = routes.get(self.path)
+        if handler:
+            handler()
         else:
             self.send_error(404)
 
     def do_POST(self) -> None:
         owner: EdgeServer = self.server._owner
         content_type = self.headers.get("Content-Type", "")
+
         if self.path == "/api/upload-file" and "multipart" in content_type:
             fname, body = self._parse_multipart()
             result = owner.upload_file(fname, body)
-            self._json(result)
+            status = 201 if result.get("ok") else 400
+            self._json(result, status)
+            return
+
+        body = self._read_body()
+        if body is None:
+            return
+
+        routes = {
+            "/api/configure": lambda: self._handle_configure(owner, body),
+            "/api/start": lambda: self._json_with_data(owner.start_detection()),
+            "/api/stop": lambda: self._json_with_data(owner.stop_detection()),
+        }
+        handler = routes.get(self.path)
+        if handler:
+            handler()
         else:
-            body = self._read_body()
-            if self.path == "/api/configure":
-                owner.configure(**body)
-                self._json({"ok": True, "source": owner._source})
-            elif self.path == "/api/start":
-                result = owner.start_detection()
-                self._json(result)
-            elif self.path == "/api/stop":
-                result = owner.stop_detection()
-                self._json(result)
-            else:
-                self.send_error(404)
+            self.send_error(404)
 
     def do_OPTIONS(self) -> None:
         self.send_response(204)
@@ -89,23 +94,34 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ── helpers ──
 
-    def _read_body(self) -> dict:
+    def _read_body(self) -> dict | None:
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length) if length > 0 else b"{}"
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
-            self._json({"ok": False, "error": "请求体 JSON 解析失败"})
-            return {}
+            self._json({"ok": False, "error": "请求体 JSON 解析失败"}, 400)
+            return None
 
-    def _json(self, data: dict) -> None:
+    def _json(self, data: dict, status: int = 200) -> None:
         body = json.dumps(data, ensure_ascii=False).encode()
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self._cors_headers()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _json_with_data(self, data: dict) -> None:
+        status = 200
+        if isinstance(data, dict):
+            if data.get("ok") is False:
+                status = 400
+        self._json(data, status)
+
+    def _handle_configure(self, owner: EdgeServer, body: dict) -> None:
+        owner.configure(**body)
+        self._json({"ok": True, "source": owner._source})
 
     def _cors_headers(self) -> None:
         self.send_header("Access-Control-Allow-Origin", "*")
