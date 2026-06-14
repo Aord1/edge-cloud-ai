@@ -28,6 +28,18 @@ cleanup() {
 }
 trap cleanup INT TERM
 
+wait_port() {
+    local port=$1 timeout=$2 label=${3:-"服务"}
+    local deadline=$(( $(date +%s) + timeout ))
+    while [ $(date +%s) -lt $deadline ]; do
+        if nc -z 127.0.0.1 "$port" 2>/dev/null; then
+            return 0
+        fi
+        sleep 0.5
+    done
+    return 1
+}
+
 echo "============================================"
 echo "  边云协同智能检测系统 — 一键启动"
 echo "============================================"
@@ -37,7 +49,7 @@ if [ "$NO_WEB" = false ]; then
     command -v node >/dev/null 2>&1 || { echo "[错误] 未找到 Node.js"; exit 1; }
 fi
 
-# ── 1. 检测数据库连通性 ──
+# ── 1. 检测数据库连通性 (P1) ──
 echo ""
 echo "[1/5] 检测数据库连通性..."
 db_check=$(python -c "
@@ -58,12 +70,13 @@ asyncio.run(check())
 if [ $? -eq 0 ]; then
     echo "[OK]   数据库已连接: $db_check"
 else
-    echo "[错误] 数据库连接失败，请检查 .env 配置"
+    echo "[错误] 数据库连接失败，请检查 .env 和 Docker"
+    echo "       docker compose -f docker/docker-compose.yml up -d"
     echo "$db_check"
     exit 1
 fi
 
-# ── 2. 检测 MQTT 连通性 ──
+# ── 2. 检测 MQTT Broker (P1) ──
 echo ""
 echo "[2/5] 检测 MQTT Broker..."
 mqtt_check=$(python -c "
@@ -83,26 +96,32 @@ if echo "$mqtt_check" | grep -q "connected"; then
     echo "[OK]   MQTT Broker 已连接"
 else
     echo "[警告] MQTT 连接失败，将回退 HTTP 上传"
-    echo "       请确保已启动: docker compose -f docker/docker-compose.yml up -d"
+    echo "       docker compose -f docker/docker-compose.yml up -d mqtt"
 fi
 
-# ── 3. 启动 Cloud API ──
+# ── 3. 启动 Cloud API (P2) ──
 echo ""
 echo "[3/5] 启动 Cloud API (localhost:8000)..."
 python -m cloud.main &
 PIDS+=($!)
-sleep 3
-echo "[OK]   Cloud API 已启动"
+if wait_port 8000 15 "Cloud API"; then
+    echo "[OK]   Cloud API 已启动 (PID $!)"
+else
+    echo "[警告] Cloud API 端口 8000 未就绪，可能需要更长时间"
+fi
 
-# ── 4. 启动 Edge Server ──
+# ── 4. 启动 Edge Server (P3) ──
 echo ""
 echo "[4/5] 启动 Edge Server (localhost:8080)..."
 python -m edge.main --server &
 PIDS+=($!)
-sleep 2
-echo "[OK]   Edge Server 已启动"
+if wait_port 8080 15 "Edge Server"; then
+    echo "[OK]   Edge Server 已启动 (PID $!)"
+else
+    echo "[警告] Edge Server 端口 8080 未就绪，可能需要更长时间"
+fi
 
-# ── 5. 启动 Web 前端 ──
+# ── 5. 启动 Web 前端 (P4) ──
 if [ "$NO_WEB" = false ]; then
     echo ""
     echo "[5/5] 启动 Web 前端 (localhost:5173)..."
@@ -112,8 +131,11 @@ if [ "$NO_WEB" = false ]; then
     fi
     (cd "$SCRIPT_DIR/web" && npm run dev) &
     PIDS+=($!)
-    sleep 3
-    echo "[OK]   Web 前端已启动"
+    if wait_port 5173 15 "Web 前端"; then
+        echo "[OK]   Web 前端已启动 (PID $!)"
+    else
+        echo "[警告] Web 前端端口 5173 未就绪，可能需要更长时间"
+    fi
 fi
 
 echo ""

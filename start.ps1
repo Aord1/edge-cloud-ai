@@ -25,6 +25,22 @@ function Stop-All {
     Write-Host "[关闭] 已全部停止" -ForegroundColor Green
 }
 
+function Wait-Port {
+    param([int]$Port, [int]$TimeoutSec = 15, [string]$Label = "服务")
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $tcp = New-Object System.Net.Sockets.TcpClient
+            $tcp.Connect("127.0.0.1", $Port)
+            $tcp.Close()
+            return $true
+        } catch {
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    return $false
+}
+
 Write-Host "============================================" -ForegroundColor Cyan
 Write-Host "  边云协同智能检测系统 — 一键启动" -ForegroundColor Cyan
 Write-Host "============================================" -ForegroundColor Cyan
@@ -45,7 +61,7 @@ if (-not $NoWeb) {
     }
 }
 
-# ── 1. 检测数据库连通性 ──
+# ── 1. 检测数据库连通性 (P1) ──
 Write-Host "`n[1/5] 检测数据库连通性..." -ForegroundColor Cyan
 $dbCheck = python -c "
 from cloud.config import settings
@@ -65,12 +81,13 @@ asyncio.run(check())
 if ($LASTEXITCODE -eq 0) {
     Write-Host "[OK]   数据库已连接: $dbCheck" -ForegroundColor Green
 } else {
-    Write-Host "[错误] 数据库连接失败，请检查 .env 配置" -ForegroundColor Red
+    Write-Host "[错误] 数据库连接失败，请检查 .env 和 Docker" -ForegroundColor Red
+    Write-Host "       docker compose -f docker/docker-compose.yml up -d" -ForegroundColor Gray
     Write-Host $dbCheck -ForegroundColor Gray
     exit 1
 }
 
-# ── 2. 检测 MQTT 连通性 ──
+# ── 2. 检测 MQTT Broker (P1) ──
 Write-Host "`n[2/5] 检测 MQTT Broker..." -ForegroundColor Cyan
 $mqttCheck = python -c "
 from edge.config import edge_settings
@@ -89,24 +106,30 @@ if ($mqttCheck -match 'connected') {
     Write-Host "[OK]   MQTT Broker 已连接" -ForegroundColor Green
 } else {
     Write-Host "[警告] MQTT 连接失败，将回退 HTTP 上传" -ForegroundColor Yellow
-    Write-Host "       请确保已启动 Docker: docker compose -f docker/docker-compose.yml up -d" -ForegroundColor Gray
+    Write-Host "       docker compose -f docker/docker-compose.yml up -d mqtt" -ForegroundColor Gray
 }
 
-# ── 3. 启动 Cloud API ──
+# ── 3. 启动 Cloud API (P2) ──
 Write-Host "`n[3/5] 启动 Cloud API (localhost:8000)..." -ForegroundColor Cyan
 $cloudProc = Start-Process -FilePath python -ArgumentList "-m", "cloud.main" -NoNewWindow -PassThru
 $pids += $cloudProc
-Start-Sleep -Seconds 3
-Write-Host "[OK]   Cloud API 已启动" -ForegroundColor Green
+if (Wait-Port -Port 8000 -TimeoutSec 15 -Label "Cloud API") {
+    Write-Host "[OK]   Cloud API 已启动 (PID $($cloudProc.Id))" -ForegroundColor Green
+} else {
+    Write-Host "[警告] Cloud API 端口 8000 未就绪，可能需要更长时间" -ForegroundColor Yellow
+}
 
-# ── 4. 启动 Edge Server ──
+# ── 4. 启动 Edge Server (P3) ──
 Write-Host "`n[4/5] 启动 Edge Server (localhost:8080)..." -ForegroundColor Cyan
 $edgeProc = Start-Process -FilePath python -ArgumentList "-m", "edge.main", "--server" -NoNewWindow -PassThru
 $pids += $edgeProc
-Start-Sleep -Seconds 2
-Write-Host "[OK]   Edge Server 已启动" -ForegroundColor Green
+if (Wait-Port -Port 8080 -TimeoutSec 15 -Label "Edge Server") {
+    Write-Host "[OK]   Edge Server 已启动 (PID $($edgeProc.Id))" -ForegroundColor Green
+} else {
+    Write-Host "[警告] Edge Server 端口 8080 未就绪，可能需要更长时间" -ForegroundColor Yellow
+}
 
-# ── 5. 启动 Web 前端 ──
+# ── 5. 启动 Web 前端 (P4) ──
 if (-not $NoWeb) {
     Write-Host "`n[5/5] 启动 Web 前端 (localhost:5173)..." -ForegroundColor Cyan
     if (-not (Test-Path "$projectRoot\web\node_modules")) {
@@ -117,8 +140,11 @@ if (-not $NoWeb) {
     }
     $webProc = Start-Process -FilePath npm -ArgumentList "run", "dev" -WorkingDirectory "$projectRoot\web" -NoNewWindow -PassThru
     $pids += $webProc
-    Start-Sleep -Seconds 3
-    Write-Host "[OK]   Web 前端已启动" -ForegroundColor Green
+    if (Wait-Port -Port 5173 -TimeoutSec 15 -Label "Web 前端") {
+        Write-Host "[OK]   Web 前端已启动 (PID $($webProc.Id))" -ForegroundColor Green
+    } else {
+        Write-Host "[警告] Web 前端端口 5173 未就绪，可能需要更长时间" -ForegroundColor Yellow
+    }
 }
 
 # ── 完成 ──
