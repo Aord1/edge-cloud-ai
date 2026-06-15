@@ -48,6 +48,12 @@ class CloudSettings(BaseSettings):
     agent_defect_history_limit: int = 10
     agent_defect_stats_hours: int = 24
 
+    # ── RAG 知识库 ──
+    embedding_model_id: str = "BAAI/bge-m3"
+    embedding_dim: int = 1024
+    rag_top_k: int = 3
+    rag_similarity_threshold: float = 0.5
+
     # ── 时区 ──
     timezone_hours: int = 8               # UTC+8
 
