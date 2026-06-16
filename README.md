@@ -32,13 +32,18 @@ edge-cloud-ai/
 │   │   ├── orchestrator.py   # LangGraph ReAct 编排
 │   │   ├── prompts.py        # 系统提示词
 │   │   ├── models/           # LLM 模型提供者
-│   │   └── toolkit/          # 工具集（缺陷查询/统计/详情）
+│   │   └── toolkit/          # 工具集（AgentBaseTool 基类 + 缺陷查询/统计/详情/标准检索）
+│   ├── rag/                  # RAG 知识库（嵌入 + 切分 + 入库 + 检索 + 重排序）
+│   │   ├── embedding.py      # Sentence-Transformers 异步嵌入服务
+│   │   ├── splitter.py       # 文档切分
+│   │   ├── ingest.py         # 知识条目入库
+│   │   └── retriever.py      # pgvector 召回 + CrossEncoder 重排序
 │   ├── api/
 │   │   ├── routes_detect.py  # 检测上传 + 自动 Agent 复核
 │   │   ├── routes_chat.py    # SSE 流式对话
 │   │   └── routes_defects.py # 缺陷记录查询
 │   ├── mqtt/handler.py       # MQTT 云端处理器（订阅 + 桥接 asyncio）
-│   ├── db/models.py          # ORM（含 agent_review 存储）
+│   ├── db/models.py          # ORM（detection_logs + defect_reviews + quality_standards）
 │   └── schemas/              # Pydantic 模型
 ├── web/                      # 前端管理平台（Vue 3 + Vite，单页）
 │   ├── src/
@@ -89,7 +94,7 @@ cp .env.example .env
 
 > **LLM 配置已从 `.env` 移除**，改为通过 Web 端或 API 运行时配置。配置持久化到 `llm_config.json`（已 gitignore，不会提交到版本控制），重启后自动恢复，无需重新输入 API Key。详见[§5 LLM 配置](#5-llm-配置运行时切换)。
 
-### 3. 数据库 & MQTT
+### 3. 数据库 & MQTT（基础服务）
 
 项目使用 PostgreSQL（pgvector）和 Mosquitto MQTT Broker。
 
@@ -100,8 +105,16 @@ docker compose -f docker/docker-compose.yml up -d
 ```
 
 启动后即可获得：
-- PostgreSQL 数据库 `localhost:5432`
+- PostgreSQL 数据库 `localhost:5432`（已内置 pgvector 扩展）
 - Mosquitto MQTT Broker `localhost:1883`
+
+首次启动后需执行数据库迁移：
+
+```bash
+alembic -c alembic.ini upgrade head
+```
+
+这将创建 `detection_logs`、`defect_reviews`、`quality_standards` 表并启用 pgvector 扩展。
 
 数据库连接信息（在 `.env` 中配置）：
 
@@ -110,7 +123,7 @@ docker compose -f docker/docker-compose.yml up -d
 | `DB_HOST` | 数据库地址 | `localhost` |
 | `DB_PORT` | 数据库端口 | `5432` |
 | `DB_NAME` | 数据库名 | `edge_cloud` |
-| `DB_USER` | 数据库用户 | `edgecloud` |
+| `DB_USER` | 数据库用户 | `postgres` |
 | `DB_PASSWORD` | 数据库密码 | — |
 
 MQTT 配置：
@@ -122,7 +135,26 @@ MQTT 配置：
 
 > 边缘端默认通过 MQTT 上传缺陷数据，MQTT 不可用时自动回退 HTTP 上传。
 
-### 4. MQTT 通信架构
+### 4. LLM 配置（运行时切换）
+
+LLM 不再通过 `.env` 配置，改为运行时管理。API Key 持久化到 `llm_config.json`（已 gitignore），重启后自动恢复。
+
+**Web 端操作**：点击顶部栏 🤖 模型名 → 选择模型 → 填入 Key → 切换，无需重启。
+
+**API 操作**：
+```bash
+# 查看当前配置（不返回 Key）
+curl http://localhost:8000/api/v1/llm/config
+
+# 切换模型
+curl -X PUT http://localhost:8000/api/v1/llm/config \
+  -H "Content-Type: application/json" \
+  -d '{"model":"deepseek-chat","base_url":"https://api.deepseek.com/v1","api_key":"sk-xxx"}'
+```
+
+首次使用时需通过 API/Web 端配置 API Key，否则 Agent 复核功能不工作。
+
+### 5. MQTT 通信架构
 
 系统通过 MQTT 实现边缘端与云端的**双向异步通信**：
 
@@ -150,24 +182,51 @@ Edge  <──subscribe── edge/{device_id}/alert <── Cloud (发布)
 - 云端尝试 MQTT 连接，失败后打印警告并继续运行（仅影响 MQTT 通道，HTTP 上传仍正常）
 - Broker 恢复后客户端自动重连（5s 间隔）
 
-### 5. LLM 配置（运行时切换）
+### 6. RAG 知识库
 
-LLM 不再通过 `.env` 配置，改为运行时管理，API Key **仅存内存、不落盘**。
+Agent 复核时可语义检索质检标准，而非仅依赖硬编码 prompt。
 
-**Web 端操作**：点击顶部栏 🤖 模型名 → 选择模型 → 填入 Key → 切换，无需重启。
+**架构流程**：
 
-**API 操作**：
-```bash
-# 查看当前配置（不返回 Key）
-curl http://localhost:8000/api/v1/llm/config
-
-# 切换模型
-curl -X PUT http://localhost:8000/api/v1/llm/config \
-  -H "Content-Type: application/json" \
-  -d '{"model":"deepseek-chat","base_url":"https://api.deepseek.com/v1","api_key":"sk-xxx"}'
+```
+Agent 调用 search_standards("裂纹判定标准")
+  → BAAI/bge-m3 生成 query embedding (1024维)
+  → pgvector cosine 召回 top-10 候选
+  → BAAI/bge-reranker-v2-m3 交叉编码重排序
+  → 返回 top-3 最相关标准条目
 ```
 
-首次使用时需通过 API/Web 端配置 API Key，否则 Agent 复核功能不工作。
+**入库方式**：
+
+```python
+from cloud.db.session import AsyncSessionLocal
+from cloud.rag import ingest
+
+entries = [
+    {"category": "crazing", "title": "裂纹判定标准",
+     "content": "裂纹深度>0.5mm且长度>10mm判定为严重缺陷...", "source": "GB/T 1234"},
+]
+async with AsyncSessionLocal() as session:
+    count = await ingest(session, entries)
+```
+
+**配置项**（`.env` 可覆盖）：
+
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `EMBEDDING_MODEL_ID` | 嵌入模型 | `BAAI/bge-m3` |
+| `EMBEDDING_DIM` | 向量维度 | `1024` |
+| `RAG_TOP_K` | 最终返回条数 | `3` |
+| `RAG_RETRIEVE_N` | 召回候选数（重排序前） | `10` |
+| `RAG_SIMILARITY_THRESHOLD` | 最低相似度 | `0.5` |
+| `RERANKER_MODEL_ID` | 重排序模型 | `BAAI/bge-reranker-v2-m3` |
+
+**涉及的数据库迁移**：
+
+| 迁移 | 内容 |
+|------|------|
+| `0002_enable_pgvector` | 启用 pgvector 扩展 |
+| `0003_quality_standards` | 创建 `quality_standards` 表 + HNSW 索引 |
 
 ---
 
