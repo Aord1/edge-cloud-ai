@@ -5,9 +5,12 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, String, func
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from ..config import settings
 
 
 class Base(DeclarativeBase):
@@ -52,4 +55,18 @@ class DefectReview(Base):
 
     defect_log: Mapped["DetectionLog"] = relationship(
         "DetectionLog", back_populates="review"
+    )
+
+
+class QualityStandard(Base):
+    __tablename__ = "quality_standards"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    category: Mapped[str] = mapped_column(String(50), index=True)
+    title: Mapped[str] = mapped_column(String(200))
+    content: Mapped[str] = mapped_column(Text)
+    source: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    embedding = mapped_column(Vector(settings.embedding_dim), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )
