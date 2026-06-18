@@ -56,6 +56,10 @@
             <span class="metric-value">{{ edgeStatus.count || 0 }}</span>
           </div>
           <div class="metric-item">
+            <span class="metric-label">离线缓存待补传</span>
+            <span class="metric-value" :class="edgeStatus.cache_pending > 0 ? 'val-warn' : 'val-ok'">{{ edgeStatus.cache_pending || 0 }} 条</span>
+          </div>
+          <div class="metric-item">
             <span class="metric-label">当前决策</span>
             <span class="metric-value" :class="edgeStatus.decision === 'CLOUD' ? 'val-warn' : 'val-ok'">{{ edgeStatus.decision || '—' }}</span>
           </div>

@@ -22,8 +22,9 @@ from .classify.decision import Action, classify
 from .config import edge_settings
 from .inference.detector import CLASS_COLORS, YOLODetector
 from .inference.visual import put_chinese_text
-from .network.http_client import upload_sync
+from .network.http_client import build_payload, upload_sync
 from .network.mqtt_client import EdgeMQTTClient
+from .network.offline_cache import OfflineCache, get_cache
 from .tracking import DefectTracker
 
 _server: EdgeServer | None = None
@@ -43,6 +44,10 @@ class EdgeServer:
         self._host = host if host is not None else edge_settings.server_host
         self._port = port if port is not None else edge_settings.server_port
         self._mqtt: EdgeMQTTClient | None = None
+
+        # 离线缓存（断网容错）
+        self._cache: OfflineCache = get_cache()
+        self._cache_stop = threading.Event()
 
         # 配置（Web 端通过 /api/configure 设置）
         self._source: str = "0"
@@ -81,13 +86,37 @@ class EdgeServer:
             print("[EdgeServer] MQTT 连接失败，将回退到 HTTP")
             self._mqtt = None
 
+        self._cache.set_upload_func(self._retry_upload)
+        self._cache_stop.clear()
+        self._cache.start_retry_loop(self._cache_stop)
+
     def stop(self) -> None:
         self.stop_detection()
         self._stream_running = False
         if self._mqtt:
             self._mqtt.disconnect()
             self._mqtt = None
+        self._cache_stop.set()
         print("[EdgeServer] 已停止")
+
+    def _retry_upload(self, payload: dict, image: bytes) -> bool:
+        """补传回调：离线缓存重试时调用。成功返回 True。"""
+        try:
+            data, files = build_payload(
+                payload["device_id"], payload["detections"], payload["reason"],
+                payload["avg_confidence"], payload["inference_ms"], payload["timestamp"],
+                frame_jpg=image, decision=payload.get("decision", "CLOUD"),
+            )
+            import httpx
+            resp = httpx.post(
+                f"{self._api_url}/detect/upload",
+                data=data, files=files,
+                timeout=edge_settings.upload_http_timeout,
+            )
+            resp.raise_for_status()
+            return True
+        except Exception as e:
+            return False
 
     # ── 配置 ──
 
@@ -168,8 +197,10 @@ class EdgeServer:
         self._status["state"] = "running"
         self._detect_thread = threading.Thread(target=self._detection_loop, daemon=True)
         self._detect_thread.start()
-        print(f"[EdgeServer] 检测启动 source={self._source}")
-        return {"ok": True, "status": "started", "source": self._source}
+        pending = self._cache.pending_count()
+        print(f"[EdgeServer] 检测启动 source={self._source}" +
+              (f" (离线缓存{pending}条待补传)" if pending > 0 else ""))
+        return {"ok": True, "status": "started", "source": self._source, "cache_pending": pending}
 
     def stop_detection(self) -> dict:
         if not self._detect_running:
@@ -186,13 +217,16 @@ class EdgeServer:
     # ── 查询 ──
 
     def get_status(self) -> dict:
-        return self._status
+        s = dict(self._status)
+        s["cache_pending"] = self._cache.pending_count()
+        return s
 
     def get_summary(self) -> dict:
         return {
             "total": len(self._records),
             "cloud_count": self._cloud_count,
             "edge_count": self._edge_count,
+            "cache_pending": self._cache.pending_count(),
             "records": self._records,
         }
 
@@ -253,10 +287,18 @@ class EdgeServer:
                             if ok:
                                 self._cloud_count += 1 if dec_str == "CLOUD" else 0
                                 self._edge_count += 1 if dec_str == "EDGE" else 0
-                                names = ", ".join(d["class_name"] for d in new_defects)
-                                print(f"  [MQTT上传] [{dec_str}] {decision.summary} ({len(new_defects)}个新缺陷)")
+                                print(f"  [MQTT上传] [{dec_str}] {decision.summary}")
                             else:
-                                print(f"  [MQTT上传失败]")
+                                print(f"  [MQTT上传失败] 缓存到本地队列")
+                                self._cache.save({
+                                    "device_id": self._device_id,
+                                    "detections": new_defects,
+                                    "reason": decision.reason,
+                                    "avg_confidence": result.avg_confidence,
+                                    "inference_ms": result.inference_ms,
+                                    "timestamp": result.timestamp,
+                                    "decision": dec_str,
+                                }, jpg_bytes)
                         else:
                             try:
                                 r = upload_sync(
@@ -272,7 +314,16 @@ class EdgeServer:
                                 print(f"  [HTTP上传] [{dec_str}] {names} ({len(new_defects)}个新缺陷) → {r.get('message', 'ok')}")
                             except Exception as e:
                                 cloud_id = ""
-                                print(f"  [上传失败] {e}")
+                                print(f"  [上传失败] {e} — 缓存到本地队列")
+                                self._cache.save({
+                                    "device_id": self._device_id,
+                                    "detections": new_defects,
+                                    "reason": decision.reason,
+                                    "avg_confidence": result.avg_confidence,
+                                    "inference_ms": result.inference_ms,
+                                    "timestamp": result.timestamp,
+                                    "decision": dec_str,
+                                }, jpg_bytes)
 
                     if result.count:
                         self._records.append({

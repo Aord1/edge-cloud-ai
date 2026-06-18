@@ -8,6 +8,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 201152
       POSTGRES_DB: edge_cloud
+    expose:
+      - "5432"
     ports:
       - "5432:5432"
     volumes:
@@ -33,6 +35,43 @@ services:
       timeout: 5s
       retries: 3
 
+  cloud:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cloud
+    container_name: edgecloud-api
+    restart: unless-stopped
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: edge_cloud
+      DB_USER: postgres
+      DB_PASSWORD: 201152
+      MQTT_BROKER_HOST: mqtt
+      MQTT_BROKER_PORT: "1883"
+      ENVIRONMENT: production
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+    volumes:
+      - cloud_uploads:/app/uploads
+
+  nginx:
+    image: nginx:alpine
+    container_name: edgecloud-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - cloud
+
 volumes:
   pgdata:
   mqttdata:
+  cloud_uploads:

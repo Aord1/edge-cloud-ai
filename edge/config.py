@@ -65,6 +65,11 @@ class EdgeSettings(BaseSettings):
     upload_jpeg_quality: int = 80             # 上传帧 JPEG 质量
     upload_http_timeout: int = 30             # HTTP 上传超时（秒）
 
+    # ── 离线容错 ──
+    cache_dir: str = "edge/cache"             # 离线缓存目录
+    cache_retry_interval: int = 10            # 补传重试间隔（秒）
+    cache_max_entries: int = 500              # 缓存最大条目数
+
     # ── FPS 统计 ──
     fps_window_size: int = 30                 # 滑动窗口大小
 
