@@ -97,3 +97,42 @@ export function updateLlmConfig(data) {
 export function deleteAllDefects() {
   return apiClient.delete('/api/v1/defects')
 }
+
+// ── 统计 API ──
+
+export function fetchStats(hours = 24) {
+  return apiClient.get('/api/v1/stats', { params: { hours } })
+}
+
+// ── 系统状态 API ──
+
+export function fetchSystemStatus() {
+  return apiClient.get('/api/v1/system/status')
+}
+
+// ── AI 对话 API（SSE） ──
+
+export function chatStream(message, threadId = 'default', onEvent) {
+  return fetch('/api/v1/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, thread_id: threadId }),
+  }).then(async (r) => {
+    if (!r.ok) throw new Error(`对话失败 (${r.status})`)
+    const reader = r.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n\n')
+      buf = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try { onEvent(JSON.parse(line.slice(6))) } catch {}
+        }
+      }
+    }
+  })
+}

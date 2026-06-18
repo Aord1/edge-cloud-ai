@@ -1,7 +1,7 @@
 <template>
   <div class="monitor-page">
-    <header class="top-bar">
-      <h1>边云协同检测</h1>
+    <!-- 状态栏 -->
+    <div class="monitor-status-bar">
       <div class="top-status">
         <span class="top-model" @click="showLlmSettings = !showLlmSettings" title="切换模型">
           🤖 {{ llmModel }}
@@ -15,7 +15,7 @@
         <span v-if="fps > 0" class="fps-badge">{{ fps }}fps</span>
         <span class="refresh-dot" title="每3秒自动刷新">◉</span>
       </div>
-    </header>
+    </div>
 
     <!-- LLM 切换面板 -->
     <div v-if="showLlmSettings" class="llm-panel">

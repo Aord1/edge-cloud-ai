@@ -50,6 +50,7 @@ dependencies = [
     "ultralytics>=8.4.60",
     "gdown>=6.1.0",
     "kagglehub>=1.0.1",
+    "psutil>=5.9.0",
 ]
 
 [project.optional-dependencies]
