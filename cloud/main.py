@@ -17,6 +17,7 @@ from .api.routes_defects import router as defects_router
 from .api.routes_llm import router as llm_router
 from .api.routes_stats import router as stats_router
 from .api.routes_system import router as system_router
+from .api.routes_report import router as report_router
 from .mqtt.handler import start_mqtt, stop_mqtt
 from .services.review import process_upload, start_review_consumer
 from .agent.llm_config import llm_runtime
@@ -76,6 +77,7 @@ app.include_router(defects_router)
 app.include_router(llm_router)
 app.include_router(stats_router)
 app.include_router(system_router)
+app.include_router(report_router)
 
 
 def main() -> None:

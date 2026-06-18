@@ -106,7 +106,11 @@
             <div class="info-row"><span>判定</span><span>{{ detailRow.decision === 'CLOUD' ? '云端复核' : '本地判定' }}</span></div>
             <div v-if="detailRow.agent_review?.reasoning" class="info-row info-review">
               <span>Agent复核</span>
-              <span class="review-text">{{ detailRow.agent_review.reasoning }}</span>
+              <span class="review-text">
+                <span v-if="detailRow.agent_review.verdict" class="review-eval" :class="verdictClass(detailRow.agent_review.verdict)">{{ detailRow.agent_review.verdict }}</span>
+                <span v-if="detailRow.agent_review.recommendation" class="review-recommend">💡 {{ detailRow.agent_review.recommendation }}</span>
+                <br>{{ detailRow.agent_review.reasoning }}
+              </span>
             </div>
           </div>
         </div>
@@ -217,6 +221,11 @@ function reviewTitle(r) {
   if (text.includes('无输出')) return 'Agent 未返回内容'
   if (text) return '复核完成'
   return '等待 Agent 复核中...'
+}
+function verdictClass(v) {
+  if (v.includes('次品') || v.includes('报废')) return 'ng'
+  if (v.includes('合格') || v.includes('放行')) return 'ok'
+  return 'pending'
 }
 
 onMounted(() => {

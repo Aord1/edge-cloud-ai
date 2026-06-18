@@ -161,11 +161,16 @@
             <!-- Agent 复核结果 -->
             <div v-if="r.decision === 'CLOUD'" class="review-inline">
               <div v-if="r.agent_review?.reasoning" class="review-content">
-                <div v-if="r.agent_review.reasoning.startsWith('[')" class="review-eval err">
-                  {{ reviewEvalLabel(r) }}
-                </div>
-                <div v-else class="review-eval" :class="r.agent_review.evaluation === 'NG' ? 'ng' : 'ok'">
-                  {{ r.agent_review.evaluation || '复核完成' }}
+                <div class="review-meta">
+                  <span v-if="r.agent_review.verdict && !r.agent_review.reasoning.startsWith('[')" class="review-eval" :class="verdictClass(r.agent_review.verdict)">
+                    {{ r.agent_review.verdict }}
+                  </span>
+                  <span v-else-if="r.agent_review.reasoning.startsWith('[')" class="review-eval err">
+                    {{ reviewEvalLabel(r) }}
+                  </span>
+                  <span v-if="r.agent_review.recommendation" class="review-recommend">
+                    💡 {{ r.agent_review.recommendation }}
+                  </span>
                 </div>
                 <div class="review-text">{{ r.agent_review.reasoning }}</div>
                 <div v-if="r.agent_review.reasoning.includes('未配置')" class="review-hint">
@@ -477,5 +482,10 @@ function reviewEvalLabel(r) {
   if (text.includes('调用失败')) return '调用失败'
   if (text.includes('无输出')) return '无输出'
   return '异常'
+}
+function verdictClass(v) {
+  if (v.includes('次品') || v.includes('报废')) return 'ng'
+  if (v.includes('合格') || v.includes('放行')) return 'ok'
+  return 'pending'
 }
 </script>

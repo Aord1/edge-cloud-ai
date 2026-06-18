@@ -110,6 +110,12 @@ export function fetchSystemStatus() {
   return apiClient.get('/api/v1/system/status')
 }
 
+// ── 质检报告 API ──
+
+export function fetchReport(defectId) {
+  return apiClient.get(`/api/v1/report/${defectId}`)
+}
+
 // ── AI 对话 API（SSE） ──
 
 export function chatStream(message, threadId = 'default', onEvent) {

@@ -147,8 +147,12 @@ async def _do_review(defect_id: uuid.UUID) -> None:
         f"设备: {device_id}\n"
         f"原因: {reason}\n"
         f"缺陷: {defect_types}\n"
-        f"置信度: {confs}\n"
-        f"请结合图片给出判定结论和处理建议。"
+        f"置信度: {confs}\n\n"
+        f"请按以下格式给出结构化复核报告：\n"
+        f"【判定结论】合格 / 次品 / 待确认（三选一）\n"
+        f"【判定依据】结合图片分析、缺陷特征和质检标准，说明判定理由\n"
+        f"【处置建议】放行 / 返工 / 报废 / 调整工艺参数\n\n"
+        f"要求：可利用 search_standards 检索质检标准，用 query_defect_history 查历史案例。"
     )
 
     full_text = []
@@ -173,12 +177,20 @@ async def _do_review(defect_id: uuid.UUID) -> None:
     reasoning = "".join(full_text) or done_text
     if not reasoning:
         reasoning = f"[Agent 无输出] 模型 {llm_runtime.model} 未返回有效内容，请检查模型和 API Key 配置。"
+
+    verdict = _extract_field(reasoning, "判定结论")
+    recommendation = _extract_field(reasoning, "处置建议")
+    if not verdict and reasoning and not reasoning.startswith("["):
+        verdict = "复核完成"
+
     now = datetime.now(timezone.utc)
 
     review = {
-        "verdict": "",
+        "verdict": verdict,
         "reasoning": reasoning,
+        "recommendation": recommendation,
         "tool_calls": tool_calls,
+        "reviewed_by": llm_runtime.model,
         "reviewed_at": now.isoformat(),
     }
 
@@ -192,7 +204,7 @@ async def _do_review(defect_id: uuid.UUID) -> None:
 
             defect_review = DefectReview(
                 defect_log_id=defect_id,
-                verdict="",
+                verdict=verdict,
                 reasoning_chain={"steps": tool_calls} if tool_calls else {},
                 tool_calls=[{"tool": t["tool"], "input": t["input"]} for t in tool_calls],
                 reviewed_by=llm_runtime.model,
@@ -202,3 +214,15 @@ async def _do_review(defect_id: uuid.UUID) -> None:
 
             await session.commit()
             print(f"[Review] {str(defect_id)[:8]} 复核完成")
+
+
+def _extract_field(text: str, field: str) -> str:
+    """从结构化 Agent 输出中提取字段值。
+    格式: 【字段名】值（到下一个【或行尾）"""
+    import re
+    pattern = rf"【{field}】\s*(.+?)(?=\n【|\n*$)"
+    m = re.search(pattern, text)
+    if m:
+        value = m.group(1).strip()
+        return value.replace("（", "(").replace("）", ")")
+    return ""
