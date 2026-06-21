@@ -17,7 +17,7 @@
       </div>
     </div>
 
-    <!-- LLM 切换面板（多 Profile） -->
+    <!-- LLM 切换面板 -->
     <div v-if="showLlmSettings" class="llm-panel">
       <div class="llm-header">
         <span>模型配置</span>
@@ -25,37 +25,36 @@
       </div>
       <div class="llm-grid">
         <div class="llm-row">
-          <label>配置</label>
-          <select v-model="selectedProfileId" class="small-select" style="flex:1" @change="onProfileSelect">
+          <label>当前</label>
+          <select v-model="selectedProfileId" class="small-select" style="flex:1" @change="onProfileSwitch">
             <option v-for="p in profiles" :key="p.id" :value="p.id">
               {{ p.name }} ({{ p.model }}) {{ p.is_active ? '●' : '' }}
             </option>
           </select>
+          <button class="btn-start" style="background:#444;padding:4px 12px" @click="onAddNew" title="新增配置">+</button>
+          <button v-if="selectedProfileId && !isActiveProfile" class="btn-start" style="background:#822;padding:4px 12px" @click="doDeleteProfile" title="删除">删</button>
         </div>
+        <div class="llm-divider">{{ editingProfileId ? '编辑 ' + editingProfileName : '新建配置' }}</div>
         <div class="llm-row">
           <label>名称</label>
-          <input v-model="llmForm.name" class="small-input" placeholder="如 GPT分析 / DS快检" style="flex:1" />
-        </div>
-        <div class="llm-row">
-          <label>模型</label>
-          <input v-model="llmForm.model" class="small-input" placeholder="如 gpt-4o / deepseek-chat" style="flex:1" />
+          <input v-model="llmForm.name" class="small-input" placeholder="如 GPT分析" style="flex:1" />
+          <label style="margin-left:10px">模型</label>
+          <input v-model="llmForm.model" class="small-input" placeholder="gpt-4o / deepseek-chat" style="flex:1" />
         </div>
         <div class="llm-row">
           <label>地址</label>
-          <input v-model="llmForm.baseUrl" class="small-input" placeholder="如 https://api.openai.com/v1" style="flex:1" />
+          <input v-model="llmForm.baseUrl" class="small-input" placeholder="https://api.openai.com/v1" style="flex:1" />
         </div>
         <div class="llm-row">
           <label>密钥</label>
           <input v-model="llmForm.apiKey" class="small-input" type="password" placeholder="sk-..." style="flex:1" />
-        </div>
-        <div class="llm-row">
-          <label>温度</label>
+          <label style="margin-left:10px">温度</label>
           <input v-model.number="llmForm.temperature" class="small-input" type="number" step="0.1" min="0" max="2" style="width:70px" />
         </div>
-        <div class="llm-row" style="gap:6px">
-          <button class="btn-start" @click="doSwitchLlm">切换</button>
-          <button class="btn-start" style="background:#444" @click="doSaveProfile">保存</button>
-          <button v-if="selectedProfileId && !isActiveProfile" class="btn-start" style="background:#822" @click="doDeleteProfile">删除</button>
+        <div class="llm-row">
+          <button class="btn-start" @click="doSaveProfile">
+            {{ editingProfileId ? '保存修改' : '新增配置' }}
+          </button>
         </div>
       </div>
       <div v-if="llmMsg" class="llm-msg" :class="llmOk ? 'ok' : 'err'">{{ llmMsg }}</div>
@@ -218,9 +217,11 @@ import {
 
 // ── LLM 多 Profile 切换 ──
 const showLlmSettings = ref(false)
-const llmModel = ref('gpt-4o')
-const llmForm = ref({ name: '', model: 'gpt-4o', baseUrl: '', apiKey: '', temperature: 0.3 })
+const llmModel = ref('...')
+const llmForm = ref({ name: '', model: '', baseUrl: '', apiKey: '', temperature: 0.3 })
 const selectedProfileId = ref('')
+const editingProfileId = ref('')
+const editingProfileName = ref('')
 const profiles = ref([])
 const activeProfileId = ref('')
 const llmMsg = ref('')
@@ -265,6 +266,7 @@ const page = ref(1)
 const pageSize = 30
 const lastUpdated = ref(null)
 let edgePoll = null
+let edgeStatusPoll = null // 始终轮询边端连通状态
 let cloudPoll = null
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / pageSize)))
@@ -292,13 +294,14 @@ async function loadProfiles() {
     if (active) {
       activeProfileId.value = active.id
       selectedProfileId.value = active.id
-      fillForm(active)
+      llmModel.value = active.model
     }
   } catch {}
 }
 
 function fillForm(p) {
-  llmModel.value = p.model
+  editingProfileId.value = p.id
+  editingProfileName.value = p.name
   llmForm.value = {
     name: p.name || '',
     model: p.model,
@@ -308,30 +311,33 @@ function fillForm(p) {
   }
 }
 
-function onProfileSelect() {
-  const p = profiles.value.find(p => p.id === selectedProfileId.value)
+function clearForm() {
+  editingProfileId.value = ''
+  editingProfileName.value = ''
+  llmForm.value = { name: '', model: '', baseUrl: '', apiKey: '', temperature: 0.3 }
+}
+
+function onAddNew() {
+  clearForm()
+  selectedProfileId.value = ''
+}
+
+function onProfileSelect(p) {
   if (p) fillForm(p)
 }
 
-async function doSwitchLlm() {
+async function onProfileSwitch() {
+  const p = profiles.value.find(p => p.id === selectedProfileId.value)
+  if (!p) return
+  if (p.is_active) { fillForm(p); return }
   try {
-    if (selectedProfileId.value) {
-      // 如果是已存在的 profile，先更新再激活
-      await updateProfile(selectedProfileId.value, {
-        name: llmForm.value.name || undefined,
-        model: llmForm.value.model,
-        base_url: llmForm.value.baseUrl,
-        api_key: llmForm.value.apiKey === '****' ? undefined : (llmForm.value.apiKey || undefined),
-        temperature: llmForm.value.temperature,
-      })
-      const r = await activateProfile(selectedProfileId.value)
-      fillForm(r.data)
-      activeProfileId.value = r.data.id
-      llmModel.value = r.data.model
-      llmMsg.value = `已切换至 ${r.data.name} (${r.data.model})`
-      llmOk.value = true
-    }
+    const r = await activateProfile(p.id)
+    activeProfileId.value = r.data.id
+    llmModel.value = r.data.model
+    fillForm(r.data)
     await loadProfiles()
+    llmMsg.value = `已切换至 ${r.data.name}`
+    llmOk.value = true
   } catch (e) {
     llmMsg.value = '切换失败: ' + (e.response?.data?.detail || e.message)
     llmOk.value = false
@@ -341,18 +347,26 @@ async function doSwitchLlm() {
 async function doSaveProfile() {
   if (!llmForm.value.model.trim()) { llmMsg.value = '请输入模型名'; llmOk.value = false; return }
   const name = llmForm.value.name.trim() || llmForm.value.model
+  const payload = {
+    name,
+    model: llmForm.value.model.trim(),
+    base_url: llmForm.value.baseUrl.trim(),
+    api_key: llmForm.value.apiKey === '****' ? '' : llmForm.value.apiKey,
+    temperature: llmForm.value.temperature,
+  }
   try {
-    const r = await createProfile({
-      name,
-      model: llmForm.value.model.trim(),
-      base_url: llmForm.value.baseUrl.trim(),
-      api_key: llmForm.value.apiKey === '****' ? '' : llmForm.value.apiKey,
-      temperature: llmForm.value.temperature,
-    })
-    llmMsg.value = `已保存 "${name}"`
+    if (editingProfileId.value) {
+      await updateProfile(editingProfileId.value, payload)
+      llmMsg.value = `已更新 "${name}"`
+    } else {
+      const r = await createProfile(payload)
+      selectedProfileId.value = r.data.id
+      editingProfileId.value = r.data.id
+      editingProfileName.value = r.data.name
+      llmMsg.value = `已添加 "${name}"`
+    }
     llmOk.value = true
     await loadProfiles()
-    selectedProfileId.value = r.data.id
   } catch (e) {
     llmMsg.value = '保存失败: ' + (e.response?.data?.detail || e.message)
     llmOk.value = false
@@ -366,9 +380,10 @@ async function doDeleteProfile() {
     llmMsg.value = '已删除'
     llmOk.value = true
     await loadProfiles()
+    clearForm()
     selectedProfileId.value = activeProfileId.value
-    const active = profiles.value.find(p => p.id === activeProfileId.value)
-    if (active) fillForm(active)
+    const p = profiles.value.find(p => p.id === activeProfileId.value)
+    if (p) fillForm(p)
   } catch (e) {
     llmMsg.value = '删除失败: ' + (e.response?.data?.detail || e.message)
     llmOk.value = false
@@ -381,10 +396,14 @@ onMounted(async () => {
   try { await loadProfiles() } catch {}
   await refreshDefects()
   cloudPoll = setInterval(refreshDefects, 3000)  // 始终 3s 轮询记录
+  edgeStatusPoll = setInterval(async () => {
+    try { await edgeStatus(); edgeOk.value = true } catch { edgeOk.value = false }
+  }, 2000)  // 始终 2s 轮询边端状态
 })
 
 onUnmounted(() => {
   clearInterval(edgePoll)
+  clearInterval(edgeStatusPoll)
   clearInterval(cloudPoll)
 })
 

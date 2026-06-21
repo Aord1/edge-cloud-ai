@@ -1035,6 +1035,14 @@ html, body, #app {
 .llm-msg.ok { color: var(--green); }
 .llm-msg.err { color: var(--red); }
 
+.llm-divider {
+  color: var(--text2);
+  font-size: 11px;
+  padding: 4px 0;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}
+
 /* ── 内联复核 ── */
 
 .review-inline {
