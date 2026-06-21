@@ -1031,6 +1031,16 @@ html, body, #app {
 }
 .llm-row label { color: var(--text2); min-width: 36px; }
 
+.llm-info-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  padding: 2px 0;
+}
+.llm-info-row label { color: var(--text2); min-width: 36px; }
+.llm-info-row span { color: var(--text); }
+
 .llm-msg { margin-top: 8px; font-size: 12px; }
 .llm-msg.ok { color: var(--green); }
 .llm-msg.err { color: var(--red); }

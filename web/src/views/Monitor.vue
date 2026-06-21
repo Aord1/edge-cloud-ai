@@ -24,8 +24,8 @@
         <button class="llm-close" @click="showLlmSettings = false" title="关闭">✕</button>
       </div>
       <div class="llm-grid">
+        <!-- 切换行 -->
         <div class="llm-row">
-          <label>当前</label>
           <select v-model="selectedProfileId" class="small-select" style="flex:1" @change="onProfileSwitch">
             <option v-for="p in profiles" :key="p.id" :value="p.id">
               {{ p.name }} ({{ p.model }}) {{ p.is_active ? '●' : '' }}
@@ -39,28 +39,36 @@
             :title="isActiveProfile ? '不能删除当前使用的配置，请先切换到其他配置' : '删除'"
             @click="doDeleteProfile">删</button>
         </div>
-        <div class="llm-divider">{{ editingProfileId ? '编辑 ' + editingProfileName : '新建配置' }}</div>
-        <div class="llm-row">
-          <label>名称</label>
-          <input v-model="llmForm.name" class="small-input" placeholder="如 GPT分析" style="flex:1" />
-          <label style="margin-left:10px">模型</label>
-          <input v-model="llmForm.model" class="small-input" placeholder="gpt-4o / deepseek-chat" style="flex:1" />
-        </div>
-        <div class="llm-row">
-          <label>地址</label>
-          <input v-model="llmForm.baseUrl" class="small-input" placeholder="https://api.openai.com/v1" style="flex:1" />
-        </div>
-        <div class="llm-row">
-          <label>密钥</label>
-          <input v-model="llmForm.apiKey" class="small-input" type="password" placeholder="sk-..." style="flex:1" />
-          <label style="margin-left:10px">温度</label>
-          <input v-model.number="llmForm.temperature" class="small-input" type="number" step="0.1" min="0" max="2" style="width:70px" />
-        </div>
-        <div class="llm-row">
-          <button class="btn-start" @click="doSaveProfile">
-            {{ editingProfileId ? '保存修改' : '新增配置' }}
-          </button>
-        </div>
+        <!-- 当前配置展示 -->
+        <div class="llm-divider">当前配置</div>
+        <div class="llm-info-row"><label>名称</label><span>{{ activeProfile?.name || '—' }}</span></div>
+        <div class="llm-info-row"><label>模型</label><span>{{ activeProfile?.model || '—' }}</span></div>
+        <div class="llm-info-row"><label>地址</label><span style="font-size:11px">{{ activeProfile?.base_url || '—' }}</span></div>
+        <div class="llm-info-row"><label>密钥</label><span>{{ activeProfile?.api_key_set ? '****' : '未设置' }}</span></div>
+        <div class="llm-info-row"><label>温度</label><span>{{ activeProfile?.temperature ?? '—' }}</span></div>
+        <!-- 新建表单（+ 切换显示） -->
+        <template v-if="showAddForm">
+          <div class="llm-divider">新建配置</div>
+          <div class="llm-row">
+            <label>名称</label>
+            <input v-model="llmForm.name" class="small-input" placeholder="如 GPT分析" style="flex:1" />
+            <label style="margin-left:10px">模型</label>
+            <input v-model="llmForm.model" class="small-input" placeholder="gpt-4o / deepseek-chat" style="flex:1" />
+          </div>
+          <div class="llm-row">
+            <label>地址</label>
+            <input v-model="llmForm.baseUrl" class="small-input" placeholder="https://api.openai.com/v1" style="flex:1" />
+          </div>
+          <div class="llm-row">
+            <label>密钥</label>
+            <input v-model="llmForm.apiKey" class="small-input" type="password" placeholder="sk-..." style="flex:1" />
+            <label style="margin-left:10px">温度</label>
+            <input v-model.number="llmForm.temperature" class="small-input" type="number" step="0.1" min="0" max="2" style="width:70px" />
+          </div>
+          <div class="llm-row">
+            <button class="btn-start" @click="doSaveProfile">新增配置</button>
+          </div>
+        </template>
       </div>
       <div v-if="llmMsg" class="llm-msg" :class="llmOk ? 'ok' : 'err'">{{ llmMsg }}</div>
     </div>
@@ -222,16 +230,16 @@ import {
 
 // ── LLM 多 Profile 切换 ──
 const showLlmSettings = ref(false)
+const showAddForm = ref(false)
 const llmModel = ref('...')
 const llmForm = ref({ name: '', model: '', baseUrl: '', apiKey: '', temperature: 0.3 })
 const selectedProfileId = ref('')
-const editingProfileId = ref('')
-const editingProfileName = ref('')
 const profiles = ref([])
 const activeProfileId = ref('')
 const llmMsg = ref('')
 const llmOk = ref(true)
 
+const activeProfile = computed(() => profiles.value.find(p => p.id === activeProfileId.value))
 const isActiveProfile = computed(() => selectedProfileId.value === activeProfileId.value)
 
 // ── 源选择 ──
@@ -304,44 +312,23 @@ async function loadProfiles() {
   } catch {}
 }
 
-function fillForm(p) {
-  editingProfileId.value = p.id
-  editingProfileName.value = p.name
-  llmForm.value = {
-    name: p.name || '',
-    model: p.model,
-    baseUrl: p.base_url || '',
-    apiKey: p.api_key_set ? '****' : '',
-    temperature: p.temperature ?? 0.3,
-  }
-}
-
-function clearForm() {
-  editingProfileId.value = ''
-  editingProfileName.value = ''
-  llmForm.value = { name: '', model: '', baseUrl: '', apiKey: '', temperature: 0.3 }
-}
-
 function onAddNew() {
-  clearForm()
-  selectedProfileId.value = ''
-}
-
-function onProfileSelect(p) {
-  if (p) fillForm(p)
+  showAddForm.value = !showAddForm.value
+  if (showAddForm.value) {
+    llmForm.value = { name: '', model: '', baseUrl: '', apiKey: '', temperature: 0.3 }
+  }
 }
 
 async function onProfileSwitch() {
   const p = profiles.value.find(p => p.id === selectedProfileId.value)
-  if (!p) return
-  if (p.is_active) { fillForm(p); return }
+  if (!p || p.is_active) return
   try {
     const r = await activateProfile(p.id)
     activeProfileId.value = r.data.id
     llmModel.value = r.data.model
-    fillForm(r.data)
     await loadProfiles()
-    llmMsg.value = `已切换至 ${r.data.name}`
+    selectedProfileId.value = r.data.id
+    llmMsg.value = '已切换至 ' + r.data.name
     llmOk.value = true
   } catch (e) {
     llmMsg.value = '切换失败: ' + (e.response?.data?.detail || e.message)
@@ -352,25 +339,17 @@ async function onProfileSwitch() {
 async function doSaveProfile() {
   if (!llmForm.value.model.trim()) { llmMsg.value = '请输入模型名'; llmOk.value = false; return }
   const name = llmForm.value.name.trim() || llmForm.value.model
-  const payload = {
-    name,
-    model: llmForm.value.model.trim(),
-    base_url: llmForm.value.baseUrl.trim(),
-    api_key: llmForm.value.apiKey === '****' ? '' : llmForm.value.apiKey,
-    temperature: llmForm.value.temperature,
-  }
   try {
-    if (editingProfileId.value) {
-      await updateProfile(editingProfileId.value, payload)
-      llmMsg.value = `已更新 "${name}"`
-    } else {
-      const r = await createProfile(payload)
-      selectedProfileId.value = r.data.id
-      editingProfileId.value = r.data.id
-      editingProfileName.value = r.data.name
-      llmMsg.value = `已添加 "${name}"`
-    }
+    await createProfile({
+      name,
+      model: llmForm.value.model.trim(),
+      base_url: llmForm.value.baseUrl.trim(),
+      api_key: llmForm.value.apiKey,
+      temperature: llmForm.value.temperature,
+    })
+    llmMsg.value = '已添加 ' + name
     llmOk.value = true
+    showAddForm.value = false
     await loadProfiles()
   } catch (e) {
     llmMsg.value = '保存失败: ' + (e.response?.data?.detail || e.message)
@@ -385,10 +364,7 @@ async function doDeleteProfile() {
     llmMsg.value = '已删除'
     llmOk.value = true
     await loadProfiles()
-    clearForm()
     selectedProfileId.value = activeProfileId.value
-    const p = profiles.value.find(p => p.id === activeProfileId.value)
-    if (p) fillForm(p)
   } catch (e) {
     llmMsg.value = '删除失败: ' + (e.response?.data?.detail || e.message)
     llmOk.value = false
