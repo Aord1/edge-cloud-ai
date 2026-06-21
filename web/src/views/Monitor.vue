@@ -26,18 +26,30 @@
       <div class="llm-grid">
         <!-- 切换行 -->
         <div class="llm-row">
-          <select v-model="selectedProfileId" class="small-select" style="flex:1" @change="onProfileSwitch">
-            <option v-for="p in profiles" :key="p.id" :value="p.id">
-              {{ p.name }} ({{ p.model }}) {{ p.is_active ? '●' : '' }}
-            </option>
-          </select>
+          <div class="llm-dropdown" @click.self="closeContextMenu">
+            <div class="llm-dropdown-trigger" @click="showDropdown = !showDropdown">
+              <span>{{ activeProfile?.name || '选择模型' }}</span>
+              <span class="llm-dropdown-model">{{ activeProfile?.model || '' }}</span>
+              <span class="llm-dropdown-arrow">{{ showDropdown ? '▲' : '▼' }}</span>
+            </div>
+            <div v-if="showDropdown" class="llm-dropdown-menu">
+              <div v-for="p in profiles" :key="p.id"
+                class="llm-dropdown-item"
+                :class="{ active: p.is_active }"
+                @click="switchToProfile(p)"
+                @contextmenu.prevent="onContextMenu($event, p)">
+                <span>{{ p.name }}</span>
+                <span class="llm-item-model">{{ p.model }}</span>
+                <span v-if="p.is_active" class="llm-item-dot">●</span>
+              </div>
+            </div>
+          </div>
           <button class="btn-start" style="background:#444;padding:4px 12px" @click="onAddNew" title="新增配置">+</button>
-          <button v-if="selectedProfileId"
-            class="btn-start"
-            :style="isActiveProfile ? 'background:#555;padding:4px 12px;cursor:not-allowed;opacity:0.5' : 'background:#822;padding:4px 12px'"
-            :disabled="isActiveProfile"
-            :title="isActiveProfile ? '不能删除当前使用的配置，请先切换到其他配置' : '删除'"
-            @click="doDeleteProfile">删</button>
+        </div>
+        <!-- 右键菜单 -->
+        <div v-if="contextMenu.visible" class="llm-context-menu" :style="{ top: contextMenu.y + 'px', left: contextMenu.x + 'px' }">
+          <div v-if="contextMenu.profile?.is_active" class="llm-context-item disabled">当前使用中，无法删除</div>
+          <div v-else class="llm-context-item danger" @click="doDeleteContextProfile">删除此配置</div>
         </div>
         <!-- 当前配置展示 -->
         <div class="llm-divider">当前配置</div>
@@ -231,16 +243,16 @@ import {
 // ── LLM 多 Profile 切换 ──
 const showLlmSettings = ref(false)
 const showAddForm = ref(false)
+const showDropdown = ref(false)
 const llmModel = ref('...')
 const llmForm = ref({ name: '', model: '', baseUrl: '', apiKey: '', temperature: 0.3 })
-const selectedProfileId = ref('')
 const profiles = ref([])
 const activeProfileId = ref('')
 const llmMsg = ref('')
 const llmOk = ref(true)
+const contextMenu = ref({ visible: false, x: 0, y: 0, profile: null })
 
 const activeProfile = computed(() => profiles.value.find(p => p.id === activeProfileId.value))
-const isActiveProfile = computed(() => selectedProfileId.value === activeProfileId.value)
 
 // ── 源选择 ──
 const sourceType = ref('camera')
@@ -306,7 +318,6 @@ async function loadProfiles() {
     const active = r.data.find(p => p.is_active)
     if (active) {
       activeProfileId.value = active.id
-      selectedProfileId.value = active.id
       llmModel.value = active.model
     }
   } catch {}
@@ -319,20 +330,34 @@ function onAddNew() {
   }
 }
 
-async function onProfileSwitch() {
-  const p = profiles.value.find(p => p.id === selectedProfileId.value)
-  if (!p || p.is_active) return
-  try {
-    const r = await activateProfile(p.id)
+function switchToProfile(p) {
+  showDropdown.value = false
+  if (p.is_active) return
+  activateProfile(p.id).then(async r => {
     activeProfileId.value = r.data.id
     llmModel.value = r.data.model
     await loadProfiles()
-    selectedProfileId.value = r.data.id
-    llmMsg.value = '已切换至 ' + r.data.name
-    llmOk.value = true
+    llmMsg.value = '已切换至 ' + r.data.name; llmOk.value = true
+  }).catch(e => {
+    llmMsg.value = '切换失败: ' + (e.response?.data?.detail || e.message); llmOk.value = false
+  })
+}
+
+function onContextMenu(e, p) {
+  contextMenu.value = { visible: true, x: e.clientX, y: e.clientY, profile: p }
+}
+function closeContextMenu() { contextMenu.value.visible = false }
+
+async function doDeleteContextProfile() {
+  const p = contextMenu.value.profile
+  contextMenu.value.visible = false
+  if (!p || p.is_active) return
+  try {
+    await deleteProfile(p.id)
+    llmMsg.value = '已删除 ' + p.name; llmOk.value = true
+    await loadProfiles()
   } catch (e) {
-    llmMsg.value = '切换失败: ' + (e.response?.data?.detail || e.message)
-    llmOk.value = false
+    llmMsg.value = '删除失败: ' + (e.response?.data?.detail || e.message); llmOk.value = false
   }
 }
 
@@ -347,27 +372,11 @@ async function doSaveProfile() {
       api_key: llmForm.value.apiKey,
       temperature: llmForm.value.temperature,
     })
-    llmMsg.value = '已添加 ' + name
-    llmOk.value = true
+    llmMsg.value = '已添加 ' + name; llmOk.value = true
     showAddForm.value = false
     await loadProfiles()
   } catch (e) {
-    llmMsg.value = '保存失败: ' + (e.response?.data?.detail || e.message)
-    llmOk.value = false
-  }
-}
-
-async function doDeleteProfile() {
-  if (!selectedProfileId.value || isActiveProfile.value) return
-  try {
-    await deleteProfile(selectedProfileId.value)
-    llmMsg.value = '已删除'
-    llmOk.value = true
-    await loadProfiles()
-    selectedProfileId.value = activeProfileId.value
-  } catch (e) {
-    llmMsg.value = '删除失败: ' + (e.response?.data?.detail || e.message)
-    llmOk.value = false
+    llmMsg.value = '保存失败: ' + (e.response?.data?.detail || e.message); llmOk.value = false
   }
 }
 

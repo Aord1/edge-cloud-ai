@@ -1053,6 +1053,47 @@ html, body, #app {
   margin-top: 4px;
 }
 
+/* ── LLM 自定义下拉 ── */
+
+.llm-dropdown { position: relative; flex: 1; }
+.llm-dropdown-trigger {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 8px; cursor: pointer;
+  font-size: 12px; color: var(--text);
+}
+.llm-dropdown-model { color: var(--text2); font-size: 11px; flex: 1; }
+.llm-dropdown-arrow { color: var(--text2); font-size: 10px; }
+.llm-dropdown-menu {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 4px; max-height: 180px; overflow-y: auto;
+}
+.llm-dropdown-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; cursor: pointer; font-size: 12px;
+  color: var(--text); user-select: none;
+}
+.llm-dropdown-item:hover { background: var(--bg3); }
+.llm-dropdown-item.active { color: var(--green); }
+.llm-item-model { color: var(--text2); font-size: 11px; flex: 1; }
+.llm-item-dot { color: var(--green); font-size: 10px; }
+
+/* ── LLM 右键菜单 ── */
+
+.llm-context-menu {
+  position: fixed; z-index: 200;
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 4px; min-width: 140px; padding: 4px 0;
+}
+.llm-context-item {
+  padding: 6px 12px; font-size: 12px; cursor: pointer; color: var(--text);
+}
+.llm-context-item:hover { background: var(--bg3); }
+.llm-context-item.danger { color: var(--red); }
+.llm-context-item.danger:hover { background: #3a1a1a; }
+.llm-context-item.disabled { color: var(--text2); cursor: not-allowed; }
+
 /* ── 内联复核 ── */
 
 .review-inline {
