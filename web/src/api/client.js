@@ -82,7 +82,7 @@ export function edgeStreamUrl() {
   return `${EDGE_BASE}/stream`
 }
 
-// ── LLM 配置 API ──
+// ── LLM 配置 API（多 Profile）──
 
 export function fetchLlmConfig() {
   return apiClient.get('/api/v1/llm/config')
@@ -90,6 +90,26 @@ export function fetchLlmConfig() {
 
 export function updateLlmConfig(data) {
   return apiClient.put('/api/v1/llm/config', data)
+}
+
+export function fetchProfiles() {
+  return apiClient.get('/api/v1/llm/profiles')
+}
+
+export function createProfile(data) {
+  return apiClient.post('/api/v1/llm/profiles', data)
+}
+
+export function updateProfile(id, data) {
+  return apiClient.put(`/api/v1/llm/profiles/${id}`, data)
+}
+
+export function activateProfile(id) {
+  return apiClient.post(`/api/v1/llm/profiles/${id}/activate`)
+}
+
+export function deleteProfile(id) {
+  return apiClient.delete(`/api/v1/llm/profiles/${id}`)
 }
 
 // ── 缺陷记录操作 ──

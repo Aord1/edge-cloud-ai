@@ -17,30 +17,32 @@
       </div>
     </div>
 
-    <!-- LLM 切换面板 -->
+    <!-- LLM 切换面板（多 Profile） -->
     <div v-if="showLlmSettings" class="llm-panel">
       <div class="llm-header">
-        <span>模型设置</span>
+        <span>模型配置</span>
         <button class="llm-close" @click="showLlmSettings = false" title="关闭">✕</button>
       </div>
       <div class="llm-grid">
         <div class="llm-row">
-          <label>模型</label>
-          <select v-model="llmForm.model" class="small-select">
-            <option value="gpt-4o">GPT-4o (OpenAI)</option>
-            <option value="gpt-4o-mini">GPT-4o-mini (OpenAI)</option>
-            <option value="deepseek-chat">DeepSeek V3</option>
-            <option value="deepseek-reasoner">DeepSeek R1</option>
-            <option value="qwen-plus">通义千问 Plus</option>
-            <option value="qwen-max">通义千问 Max</option>
-            <option value="moonshot-v1-8k">Moonshot (Kimi)</option>
-            <option value="__custom__">自定义...</option>
+          <label>配置</label>
+          <select v-model="selectedProfileId" class="small-select" style="flex:1" @change="onProfileSelect">
+            <option v-for="p in profiles" :key="p.id" :value="p.id">
+              {{ p.name }} ({{ p.model }}) {{ p.is_active ? '●' : '' }}
+            </option>
           </select>
-          <input v-if="llmForm.model === '__custom__'" v-model="llmForm.customModel" class="small-input" placeholder="模型名称" style="width:140px" />
+        </div>
+        <div class="llm-row">
+          <label>名称</label>
+          <input v-model="llmForm.name" class="small-input" placeholder="如 GPT分析 / DS快检" style="flex:1" />
+        </div>
+        <div class="llm-row">
+          <label>模型</label>
+          <input v-model="llmForm.model" class="small-input" placeholder="如 gpt-4o / deepseek-chat" style="flex:1" />
         </div>
         <div class="llm-row">
           <label>地址</label>
-          <input v-model="llmForm.baseUrl" class="small-input" placeholder="留空=OpenAI 官方" style="flex:1" />
+          <input v-model="llmForm.baseUrl" class="small-input" placeholder="如 https://api.openai.com/v1" style="flex:1" />
         </div>
         <div class="llm-row">
           <label>密钥</label>
@@ -49,7 +51,11 @@
         <div class="llm-row">
           <label>温度</label>
           <input v-model.number="llmForm.temperature" class="small-input" type="number" step="0.1" min="0" max="2" style="width:70px" />
+        </div>
+        <div class="llm-row" style="gap:6px">
           <button class="btn-start" @click="doSwitchLlm">切换</button>
+          <button class="btn-start" style="background:#444" @click="doSaveProfile">保存</button>
+          <button v-if="selectedProfileId && !isActiveProfile" class="btn-start" style="background:#822" @click="doDeleteProfile">删除</button>
         </div>
       </div>
       <div v-if="llmMsg" class="llm-msg" :class="llmOk ? 'ok' : 'err'">{{ llmMsg }}</div>
@@ -206,15 +212,21 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import {
   edgeConfigure, edgeStart, edgeStop, edgeStatus, edgeStreamUrl,
   edgeListCameras, edgeUploadFile, fetchDefects,
-  fetchLlmConfig, updateLlmConfig, deleteAllDefects,
+  deleteAllDefects, fetchProfiles, createProfile,
+  updateProfile, activateProfile, deleteProfile,
 } from '../api/client.js'
 
-// ── LLM 切换 ──
+// ── LLM 多 Profile 切换 ──
 const showLlmSettings = ref(false)
 const llmModel = ref('gpt-4o')
-const llmForm = ref({ model: 'gpt-4o', customModel: '', baseUrl: '', apiKey: '', temperature: 0.3 })
+const llmForm = ref({ name: '', model: 'gpt-4o', baseUrl: '', apiKey: '', temperature: 0.3 })
+const selectedProfileId = ref('')
+const profiles = ref([])
+const activeProfileId = ref('')
 const llmMsg = ref('')
 const llmOk = ref(true)
+
+const isActiveProfile = computed(() => selectedProfileId.value === activeProfileId.value)
 
 // ── 源选择 ──
 const sourceType = ref('camera')
@@ -270,47 +282,95 @@ const visiblePages = computed(() => {
   return pages
 })
 
-// ── LLM 预设地址 ──
-const LLM_PRESETS = {
-  'gpt-4o': 'https://api.openai.com/v1',
-  'gpt-4o-mini': 'https://api.openai.com/v1',
-  'deepseek-chat': 'https://api.deepseek.com/v1',
-  'deepseek-reasoner': 'https://api.deepseek.com/v1',
-  'qwen-plus': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  'qwen-max': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-  'moonshot-v1-8k': 'https://api.moonshot.cn/v1',
+// ── LLM Profile 管理 ──
+
+async function loadProfiles() {
+  try {
+    const r = await fetchProfiles()
+    profiles.value = r.data
+    const active = r.data.find(p => p.is_active)
+    if (active) {
+      activeProfileId.value = active.id
+      selectedProfileId.value = active.id
+      fillForm(active)
+    }
+  } catch {}
 }
 
-function applyLlmConfig(data) {
-  llmModel.value = data.model || 'gpt-4o'
+function fillForm(p) {
+  llmModel.value = p.model
   llmForm.value = {
-    model: Object.keys(LLM_PRESETS).includes(data.model) ? data.model : '__custom__',
-    customModel: Object.keys(LLM_PRESETS).includes(data.model) ? '' : data.model,
-    baseUrl: data.base_url || '',
-    apiKey: data.api_key_set ? '****' : '',
-    temperature: data.temperature ?? 0.3,
+    name: p.name || '',
+    model: p.model,
+    baseUrl: p.base_url || '',
+    apiKey: p.api_key_set ? '****' : '',
+    temperature: p.temperature ?? 0.3,
   }
 }
 
+function onProfileSelect() {
+  const p = profiles.value.find(p => p.id === selectedProfileId.value)
+  if (p) fillForm(p)
+}
+
 async function doSwitchLlm() {
-  const model = llmForm.value.model === '__custom__' ? llmForm.value.customModel.trim() : llmForm.value.model
-  if (!model) { llmMsg.value = '请输入模型名称'; llmOk.value = false; return }
-  const baseUrl = llmForm.value.model === '__custom__'
-    ? llmForm.value.baseUrl
-    : (llmForm.value.baseUrl || LLM_PRESETS[llmForm.value.model] || '')
   try {
-    const r = await updateLlmConfig({
-      model,
-      base_url: baseUrl,
-      api_key: llmForm.value.apiKey || undefined,
-      temperature: llmForm.value.temperature,
-    })
-    applyLlmConfig(r.data)
-    llmModel.value = model
-    llmMsg.value = `已切换至 ${model}`
-    llmOk.value = true
+    if (selectedProfileId.value) {
+      // 如果是已存在的 profile，先更新再激活
+      await updateProfile(selectedProfileId.value, {
+        name: llmForm.value.name || undefined,
+        model: llmForm.value.model,
+        base_url: llmForm.value.baseUrl,
+        api_key: llmForm.value.apiKey === '****' ? undefined : (llmForm.value.apiKey || undefined),
+        temperature: llmForm.value.temperature,
+      })
+      const r = await activateProfile(selectedProfileId.value)
+      fillForm(r.data)
+      activeProfileId.value = r.data.id
+      llmModel.value = r.data.model
+      llmMsg.value = `已切换至 ${r.data.name} (${r.data.model})`
+      llmOk.value = true
+    }
+    await loadProfiles()
   } catch (e) {
     llmMsg.value = '切换失败: ' + (e.response?.data?.detail || e.message)
+    llmOk.value = false
+  }
+}
+
+async function doSaveProfile() {
+  if (!llmForm.value.model.trim()) { llmMsg.value = '请输入模型名'; llmOk.value = false; return }
+  const name = llmForm.value.name.trim() || llmForm.value.model
+  try {
+    const r = await createProfile({
+      name,
+      model: llmForm.value.model.trim(),
+      base_url: llmForm.value.baseUrl.trim(),
+      api_key: llmForm.value.apiKey === '****' ? '' : llmForm.value.apiKey,
+      temperature: llmForm.value.temperature,
+    })
+    llmMsg.value = `已保存 "${name}"`
+    llmOk.value = true
+    await loadProfiles()
+    selectedProfileId.value = r.data.id
+  } catch (e) {
+    llmMsg.value = '保存失败: ' + (e.response?.data?.detail || e.message)
+    llmOk.value = false
+  }
+}
+
+async function doDeleteProfile() {
+  if (!selectedProfileId.value || isActiveProfile.value) return
+  try {
+    await deleteProfile(selectedProfileId.value)
+    llmMsg.value = '已删除'
+    llmOk.value = true
+    await loadProfiles()
+    selectedProfileId.value = activeProfileId.value
+    const active = profiles.value.find(p => p.id === activeProfileId.value)
+    if (active) fillForm(active)
+  } catch (e) {
+    llmMsg.value = '删除失败: ' + (e.response?.data?.detail || e.message)
     llmOk.value = false
   }
 }
@@ -318,7 +378,7 @@ async function doSwitchLlm() {
 // ── 初始化 ──
 onMounted(async () => {
   try { const r = await edgeListCameras(); cameras.value = r.cameras.length ? r.cameras : [0] } catch {}
-  try { const r = await fetchLlmConfig(); applyLlmConfig(r.data) } catch {}
+  try { await loadProfiles() } catch {}
   await refreshDefects()
   cloudPoll = setInterval(refreshDefects, 3000)  // 始终 3s 轮询记录
 })

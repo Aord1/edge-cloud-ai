@@ -58,6 +58,23 @@ class DefectReview(Base):
     )
 
 
+class LlmProfile(Base):
+    """LLM 模型配置 — 支持多套配置持久化与一键切换。"""
+
+    __tablename__ = "llm_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    model: Mapped[str] = mapped_column(String(128), nullable=False)
+    base_url: Mapped[str] = mapped_column(String(256), default="")
+    api_key: Mapped[str] = mapped_column(String(512), default="")
+    temperature: Mapped[float] = mapped_column(Float, default=0.3)
+    is_active: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class QualityStandard(Base):
     __tablename__ = "quality_standards"
 

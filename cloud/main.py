@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
     start_mqtt(bridge_queue)
     _bridge_task = asyncio.create_task(_process_mqtt_bridge(bridge_queue))
 
+    await llm_runtime.load()
     if llm_runtime.api_key:
         await start_review_consumer()
 

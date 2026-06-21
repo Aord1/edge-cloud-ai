@@ -90,7 +90,6 @@ cp .env.example .env
 | ------------------ | --------------------------------- | ---------------- |
 | `DB_PASSWORD`    | 数据库密码                        | —               |
 | `MQTT_PASSWORD`  | MQTT 密码（可选）                 | —               |
-| `JWT_SECRET_KEY` | JWT 签名密钥                      | 生产环境务必修改 |
 
 > **LLM 配置已从 `.env` 移除**，改为通过 Web 端或 API 运行时配置。配置持久化到 `llm_config.json`（已 gitignore，不会提交到版本控制），重启后自动恢复，无需重新输入 API Key。详见[§5 LLM 配置](#5-llm-配置运行时切换)。
 
