@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+
+# 国内环境自动使用 HF 镜像（必须在 import sentence_transformers 之前设置）
+if not os.environ.get("HF_ENDPOINT"):
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 
 from sentence_transformers import SentenceTransformer
 

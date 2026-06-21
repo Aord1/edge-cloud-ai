@@ -24,6 +24,9 @@ _reranker = None
 def _get_reranker():
     global _reranker
     if _reranker is None:
+        import os
+        if not os.environ.get("HF_ENDPOINT"):
+            os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
         from sentence_transformers import CrossEncoder
         logger.info("Loading reranker model: %s", settings.reranker_model_id)
         _reranker = CrossEncoder(settings.reranker_model_id)

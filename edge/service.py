@@ -16,6 +16,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# 关闭 OpenCV 全局日志（避免 OBSensor/DSHOW 等驱动报错刷屏）
+os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+
 from .capture.camera import make_camera
 from .classify.alert import AlertEngine
 from .classify.decision import Action, classify
@@ -154,7 +157,7 @@ class EdgeServer:
             return {"dir": os.path.abspath(d), "files": [], "error": str(e)}
 
     def list_cameras(self) -> dict:
-        import io, sys
+        import io, os, sys
         available = []
         for idx in range(edge_settings.camera_probe_max):
             old_stderr = sys.stderr

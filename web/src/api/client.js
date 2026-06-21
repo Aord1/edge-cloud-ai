@@ -29,10 +29,15 @@ export function fetchDefects(limit = 30, offset = 0, deviceId = null) {
 // ── 边端 API ──
 
 export async function edgeConfigure(source, conf = 0.3, confEdge = 0.5, videoDir = '') {
+  const params = new URLSearchParams()
+  params.append('source', String(source))
+  if (conf !== undefined) params.append('conf', String(conf))
+  if (confEdge !== undefined) params.append('conf_edge', String(confEdge))
+  if (videoDir) params.append('video_dir', videoDir)
   const r = await fetch(`${EDGE_BASE}/api/configure`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ source, conf, conf_edge: confEdge, video_dir: videoDir }),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
   })
   const data = await r.json()
   if (!r.ok) throw new Error(data.error || `配置失败 (${r.status})`)

@@ -32,7 +32,12 @@
             </option>
           </select>
           <button class="btn-start" style="background:#444;padding:4px 12px" @click="onAddNew" title="新增配置">+</button>
-          <button v-if="selectedProfileId && !isActiveProfile" class="btn-start" style="background:#822;padding:4px 12px" @click="doDeleteProfile" title="删除">删</button>
+          <button v-if="selectedProfileId"
+            class="btn-start"
+            :style="isActiveProfile ? 'background:#555;padding:4px 12px;cursor:not-allowed;opacity:0.5' : 'background:#822;padding:4px 12px'"
+            :disabled="isActiveProfile"
+            :title="isActiveProfile ? '不能删除当前使用的配置，请先切换到其他配置' : '删除'"
+            @click="doDeleteProfile">删</button>
         </div>
         <div class="llm-divider">{{ editingProfileId ? '编辑 ' + editingProfileName : '新建配置' }}</div>
         <div class="llm-row">
