@@ -18,20 +18,6 @@ from .embedding import embed_text
 
 logger = logging.getLogger(__name__)
 
-_reranker = None
-
-
-def _get_reranker():
-    global _reranker
-    if _reranker is None:
-        import os
-        if not os.environ.get("HF_ENDPOINT"):
-            os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-        from sentence_transformers import CrossEncoder
-        logger.info("Loading reranker model: %s", settings.reranker_model_id)
-        _reranker = CrossEncoder(settings.reranker_model_id)
-    return _reranker
-
 
 @dataclass
 class RetrievalResult:
@@ -79,35 +65,14 @@ async def retrieve(
             content=row.content, source=row.source, score=score,
         )]
 
-    ranked = await _rerank(query, candidates)
-
-    results: list[RetrievalResult] = []
-    for row in ranked[:top_k]:
-        results.append(RetrievalResult(
-            category=row.category, title=row.title,
-            content=row.content, source=row.source, score=row.score,
-        ))
-    return results
-
-
-async def _rerank(
-    query: str,
-    candidates: list,
-) -> list:
-    reranker = _get_reranker()
-    pairs = [(query, row.content) for row in candidates]
-
-    scores: list[float] = await asyncio.to_thread(
-        reranker.predict, pairs
-    )
-
-    ranked = []
-    for row, score in zip(candidates, scores):
-        ranked.append(RetrievalResult(
-            category=row.category, title=row.title,
-            content=row.content, source=row.source,
-            score=float(score),
-        ))
-
+    # 直接用 cosine 距离排序（跳过 CrossEncoder 重排序，避免下载大模型）
+    ranked: list[RetrievalResult] = []
+    for row in candidates:
+        score = 1.0 - row.distance
+        if score >= settings.rag_similarity_threshold:
+            ranked.append(RetrievalResult(
+                category=row.category, title=row.title,
+                content=row.content, source=row.source, score=score,
+            ))
     ranked.sort(key=lambda r: r.score, reverse=True)
-    return ranked
+    return ranked[:top_k]

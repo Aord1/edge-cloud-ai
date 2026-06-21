@@ -18,6 +18,8 @@ import numpy as np
 
 # 关闭 OpenCV 全局日志（避免 OBSensor/DSHOW 等驱动报错刷屏）
 os.environ["OPENCV_LOG_LEVEL"] = "ERROR"
+os.environ["OPENCV_VIDEOIO_PRIORITY_LIST"] = "FFMPEG"  # 跳过 OBSensor 后端
+os.environ["LIBMODE_SENSOR_LOG_LEVEL"] = "error"
 
 from .capture.camera import make_camera
 from .classify.alert import AlertEngine
