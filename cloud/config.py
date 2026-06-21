@@ -51,6 +51,8 @@ class CloudSettings(BaseSettings):
     # ── RAG 知识库 ──
     embedding_model_id: str = "BAAI/bge-m3"
     embedding_dim: int = 1024
+    embedding_api_url: str = ""             # 远程 API 地址（空=硅基流动默认）
+    embedding_api_key: str = ""             # 远程 API Key（空=用 LLM 的 Key）
     rag_top_k: int = 3                    # 最终返回条数
     rag_retrieve_n: int = 10              # 召回候选数（重排序前）
     rag_similarity_threshold: float = 0.5 # 最低相似度
