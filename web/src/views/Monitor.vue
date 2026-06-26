@@ -96,9 +96,10 @@
             </label>
             <template v-if="sourceType === 'camera'">
               <select v-model="cameraId" class="small-select" :disabled="running">
-                <option v-for="c in cameras" :key="c" :value="String(c)">{{ c }}</option>
+                <option v-for="c in cameras" :key="c" :value="String(c)">摄像头 {{ c }}</option>
                 <option value="__custom__">自定义...</option>
               </select>
+              <button class="btn-refresh" @click="refreshCameras" :disabled="running" title="刷新摄像头列表">🔄</button>
               <input v-if="cameraId === '__custom__'" v-model="customSource" class="small-input" placeholder="摄像头索引或设备路径" style="width:200px" :disabled="running" />
             </template>
           </div>
@@ -276,7 +277,8 @@ const canStart = computed(() => {
   return !!fileSource.value
 })
 
-const streamUrl = computed(() => edgeStreamUrl())
+const streamId = ref(0)
+const streamUrl = computed(() => `${edgeStreamUrl()}?t=${streamId.value}`)
 
 // ── 状态 ──
 const edgeOk = ref(false)
@@ -382,7 +384,7 @@ async function doSaveProfile() {
 
 // ── 初始化 ──
 onMounted(async () => {
-  try { const r = await edgeListCameras(); cameras.value = r.cameras.length ? r.cameras : [0] } catch {}
+  await refreshCameras()
   try { await loadProfiles() } catch {}
   await refreshDefects()
   cloudPoll = setInterval(refreshDefects, 3000)  // 始终 3s 轮询记录
@@ -396,6 +398,17 @@ onUnmounted(() => {
   clearInterval(edgeStatusPoll)
   clearInterval(cloudPoll)
 })
+
+// ── 摄像头列表 ──
+async function refreshCameras() {
+  try {
+    const r = await edgeListCameras()
+    cameras.value = r.cameras.length ? r.cameras : [0]
+    if (!cameras.value.includes(Number(cameraId.value)) && cameraId.value !== '__custom__') {
+      cameraId.value = String(cameras.value[0])
+    }
+  } catch { cameras.value = [0] }
+}
 
 // ── 分页 ──
 function goPage(p) {
@@ -455,6 +468,7 @@ async function doStart() {
   error.value = ''
   try {
     await edgeConfigure(src, confidence.value)
+    streamId.value++
     const r = await edgeStart()
     if (r.ok) {
       running.value = true

@@ -165,7 +165,7 @@ class EdgeServer:
             old_stderr = sys.stderr
             sys.stderr = io.StringIO()
             try:
-                cap = cv2.VideoCapture(idx)
+                cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
             finally:
                 sys.stderr = old_stderr
             if cap.isOpened():

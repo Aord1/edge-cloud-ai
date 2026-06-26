@@ -41,7 +41,8 @@ class Camera:
     # ── 生命周期 ──────────────────────────────────────────────
 
     def open(self) -> None:
-        self._cap = cv2.VideoCapture(self._source)
+        backend = cv2.CAP_DSHOW if isinstance(self._source, int) else cv2.CAP_ANY
+        self._cap = cv2.VideoCapture(self._source, backend)
         self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._width)
         self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._height)
         if not self._cap.isOpened():

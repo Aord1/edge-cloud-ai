@@ -23,6 +23,30 @@ _queued_ids: set[uuid.UUID] = set()
 _consumer_started = False
 
 
+def _format_error(exc: Exception) -> str:
+    """从异常链中提取可读的错误描述。"""
+    # OpenAI / LangChain 异常
+    try:
+        body = getattr(exc, "body", None)
+        if body and isinstance(body, dict):
+            msg = body.get("message", "") or body.get("error", {}).get("message", "")
+            if msg:
+                return f"{type(exc).__name__}: {msg}"
+    except Exception:
+        pass
+    # HTTP 状态码
+    status = getattr(exc, "status_code", None) or getattr(exc, "code", None)
+    if status:
+        return f"{type(exc).__name__} [HTTP {status}]: {exc}"
+    # 异常链中的根因
+    cause = exc.__cause__ or exc.__context__
+    if cause is not None:
+        cause_msg = str(cause)
+        if cause_msg and cause_msg != str(exc):
+            return f"{type(exc).__name__}: {cause_msg}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 async def start_review_consumer() -> None:
     global _consumer_started
     if _consumer_started:
@@ -91,9 +115,9 @@ async def _review_consumer() -> None:
             try:
                 await _do_review(defect_id)
             except Exception as e:
-                print(f"[ReviewQueue] 复核失败 {defect_id}: {e}")
-                import traceback; traceback.print_exc()
-                await _write_review(defect_id, reasoning=f"[Agent 调用失败] {e}")
+                detail = _format_error(e)
+                print(f"[ReviewQueue] 复核失败 {defect_id}: {detail}")
+                await _write_review(defect_id, reasoning=f"[Agent 调用失败] {detail}")
         _review_queue.task_done()
         await asyncio.sleep(settings.review_consumer_interval)
 
@@ -158,25 +182,42 @@ async def _do_review(defect_id: uuid.UUID) -> None:
     full_text = []
     tool_calls = []
     done_text = ""
+    event_types = set()
     try:
         async for event in agent.stream_with_image(
             prompt, image_path=image_path or "", thread_id=str(defect_id)
         ):
-            if event["type"] == "text":
-                full_text.append(event["content"])
-            elif event["type"] == "tool_call":
+            etype = event.get("type", "?")
+            event_types.add(etype)
+            if etype == "text":
+                full_text.append(event.get("content", ""))
+            elif etype == "tool_call":
                 tool_calls.append({
                     "tool": event.get("tool_name", ""),
                     "input": str(event.get("tool_input", "")),
                 })
-            elif event["type"] == "done":
+            elif etype == "done":
                 done_text = event.get("content", "")
     except Exception as e:
-        return await _write_review(defect_id, reasoning=f"[Agent 调用失败] {e}")
+        detail = _format_error(e)
+        return await _write_review(defect_id, reasoning=f"[Agent 调用失败] {detail}")
 
     reasoning = "".join(full_text) or done_text
     if not reasoning:
-        reasoning = f"[Agent 无输出] 模型 {llm_runtime.model} 未返回有效内容，请检查模型和 API Key 配置。"
+        # 降级：非流式重试
+        print(f"[Review] 流式无输出 events={event_types}，尝试非流式调用...")
+        try:
+            from ..agent.models import create_llm
+            fallback_llm = create_llm()
+            fallback_msg = await fallback_llm.ainvoke(prompt)
+            if fallback_msg and hasattr(fallback_msg, "content"):
+                reasoning = fallback_msg.content or ""
+                if isinstance(reasoning, list):
+                    reasoning = "".join(c.get("text", "") if isinstance(c, dict) else str(c) for c in reasoning)
+        except Exception as fe:
+            print(f"[Review] 非流式重试也失败: {fe}")
+    if not reasoning:
+        reasoning = f"[Agent 无输出] 模型 {llm_runtime.model} 未返回有效内容 (events: {event_types})，请检查模型和 API Key 配置。"
 
     verdict = _extract_field(reasoning, "判定结论")
     recommendation = _extract_field(reasoning, "处置建议")

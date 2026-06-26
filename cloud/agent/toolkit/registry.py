@@ -10,6 +10,7 @@ from .defect_history import query_defect_history
 from .defect_stats import query_defect_stats
 from .generate_report import generate_report
 from .search_standards import search_standards
+from .web_search import web_search
 
 AGENT_TOOLS: list[BaseTool] = [
     query_defect_history,
@@ -17,6 +18,7 @@ AGENT_TOOLS: list[BaseTool] = [
     get_defect_detail,
     search_standards,
     generate_report,
+    web_search,
 ]
 
 __all__ = ["AGENT_TOOLS", "AgentBaseTool"]

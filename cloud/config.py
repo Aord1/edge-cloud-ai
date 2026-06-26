@@ -37,6 +37,9 @@ class CloudSettings(BaseSettings):
     # ── LLM 全局回退 ──
     llm_api_key: str = ""
 
+    # ── Tavily 联网搜索 ──
+    tavily_api_key: str = ""
+
     # ── Agent 复核队列 ──
     review_queue_maxsize: int = 200       # 复核队列最大容量
     review_consumer_interval: float = 2.0 # 消费者间隔（秒）

@@ -21,6 +21,7 @@ from .api.routes_report import router as report_router
 from .mqtt.handler import start_mqtt, stop_mqtt
 from .services.review import process_upload, start_review_consumer
 from .agent.llm_config import llm_runtime
+from .agent import agent
 
 _bridge_task: asyncio.Task | None = None
 
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
     _bridge_task = asyncio.create_task(_process_mqtt_bridge(bridge_queue))
 
     await llm_runtime.load()
+    agent.reconfigure()    # 使用 DB 配置重建 Agent
     if llm_runtime.api_key:
         await start_review_consumer()
 

@@ -74,8 +74,9 @@ class DefectAgent:
     async def _stream_events(
         self, input_data: dict, thread_id: str
     ) -> AsyncIterator[dict]:
-        """内部流式执行，解析事件并 yield。"""
+        """内部流式执行，解析事件并 yield。若流式无文本输出则降级为非流式。"""
         final_content = ""
+        had_text = False
         async for event in self._graph.astream_events(
             input_data,
             config={"configurable": {"thread_id": thread_id}},
@@ -86,6 +87,7 @@ class DefectAgent:
             if kind == "on_chat_model_stream":
                 chunk = event["data"]["chunk"]
                 if chunk.content:
+                    had_text = True
                     final_content += chunk.content
                     yield {"type": "text", "content": chunk.content}
 
@@ -110,6 +112,16 @@ class DefectAgent:
             elif kind == "on_tool_end":
                 output = event["data"].get("output", "")
                 yield {"type": "tool_result", "content": str(output)}
+
+        # 流式无文本 → 降级非流式
+        if not had_text and not final_content:
+            try:
+                msg = await self._llm.ainvoke(input_data["messages"])
+                if msg and hasattr(msg, "content") and msg.content:
+                    final_content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                    yield {"type": "text", "content": final_content}
+            except Exception:
+                pass
 
         if final_content:
             yield {"type": "text", "content": ""}
